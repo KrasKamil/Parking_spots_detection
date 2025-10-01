@@ -22,7 +22,7 @@
             "name": "Blok",
             "rect_width": 87,
             "rect_height": 200,
-            "threshold": 1200,
+            "threshold": 1250,
             "positions_file": "data/parking_lots/blok_positions",
             "source_image": "data/source/img/blok_image.png",
             "video_source": "data/source/video/output1.mp4"
