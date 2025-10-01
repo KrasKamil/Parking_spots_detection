@@ -6,8 +6,8 @@
             "rect_height": 48,
             "threshold": 900,
             "positions_file": "data/CarParkPos",
-            "source_image": "data/source/example_image.png",
-            "video_source": "data/source/carPark.mp4"
+            "source_image": "data/source/img/example_image.png",
+            "video_source": "data/source/video/carPark.mp4"
         },
         "new_parking": {
             "name": "New Parking Lot",
@@ -15,8 +15,26 @@
             "rect_height": 50,
             "threshold": 1000,
             "positions_file": "data/parking_lots/new_parking_positions",
-            "source_image": "data/source/new_parking_image.png",
-            "video_source": "data/source/new_parking_video.mp4"
+            "source_image": "data/source/img/new_parking_image.png",
+            "video_source": "data/source/video/new_parking_video.mp4"
+        },
+        "blok": {
+            "name": "Blok",
+            "rect_width": 87,
+            "rect_height": 200,
+            "threshold": 1200,
+            "positions_file": "data/parking_lots/blok_positions",
+            "source_image": "data/source/img/blok_image.png",
+            "video_source": "data/source/video/output1.mp4"
+        },
+        "blok_2": {
+            "name": "Blok 2",
+            "rect_width": 87,
+            "rect_height": 200,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/blok_2_positions",
+            "source_image": "data/source/img/blok_2_image.png",
+            "video_source": "data/source/video/blok_2.mp4"
         }
     },
     "processing_params": {

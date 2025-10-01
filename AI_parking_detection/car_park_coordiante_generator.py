@@ -61,8 +61,10 @@ def demonstration(parking_lot_name: str = "default", image_path: str = None):
         cv2.imshow("Parking Space Coordinator", image)
         cv2.setMouseCallback("Parking Space Coordinator", coordinate_generator.mouseClick)
         
-        key = cv2.waitKey(1) & 0xFF
+        key = cv2.waitKey(1) & 0xFF  
         if key == ord("q"):
+            break
+        elif key == 27:  # ESC
             break
         elif key == ord("r"):
             coordinate_generator.car_park_positions = []
@@ -70,6 +72,8 @@ def demonstration(parking_lot_name: str = "default", image_path: str = None):
             print("Reset all positions")
         elif key == ord("s"):
             coordinate_generator.save_positions()
+            print("Saved positions")
+            break
     
     cv2.destroyAllWindows()
 
