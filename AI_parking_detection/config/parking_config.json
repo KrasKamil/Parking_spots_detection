@@ -31,10 +31,28 @@
             "name": "Blok 2",
             "rect_width": 87,
             "rect_height": 200,
-            "threshold": 1000,
+            "threshold": 1100,
             "positions_file": "data/parking_lots/blok_2_positions",
             "source_image": "data/source/img/blok_2_image.png",
             "video_source": "data/source/video/blok_2.mp4"
+        },
+        "blok_3": {
+            "name": "Blok 3",
+            "rect_width": 68,
+            "rect_height": 131,
+            "threshold": 1400,
+            "positions_file": "data/parking_lots/blok_3_positions",
+            "source_image": "data/source/img/blok_3.png",
+            "video_source": "data/source/video/blok_3.mp4"
+        },
+        "blok_wet": {
+            "name": "Blok Wet",
+            "rect_width": 80,
+            "rect_height": 160,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/blok_wet_positions",
+            "source_image": "data/source/img/blok_wet_image.png",
+            "video_source": "data/source/video/blok_wet.mp4"
         }
     },
     "processing_params": {
