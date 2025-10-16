@@ -27,16 +27,21 @@ def demonstration(parking_lot_name: str = "default", image_path: str = None):
     # Read existing positions
     coordinate_generator.read_positions()
     
+    coordinate_generator.read_positions()
+    
     print(f"Coordinate Generator for: {lot_config['name']}")
     print("Controls:")
-    print("- Left click: Add parking space")
-    print("- Right click: Remove parking space")
+    print("- 'p': Switch to Rectangular mode (single click) [DEFAULT]")
+    print("- 'i': Switch to Irregular mode (4 clicks)")
+    print("- Left click: Add parking space (mode dependent)")
+    print("- Right click: Remove parking space / Cancel irregular shape")
     print("- 'r': Reset all positions")
     print("- 's': Save positions")
-    print("- 'q': Quit")
+    print("- 'q' or ESC: Quit")
+    print(f"\nCurrent mode: Rectangular (P)")
     
     while True:
-        # Load and display image
+        # Load image
         try:
             image = cv2.imread(image_path)
             if image is None:
@@ -46,34 +51,38 @@ def demonstration(parking_lot_name: str = "default", image_path: str = None):
             print(f"Error loading image: {e}")
             break
         
-        # Draw existing rectangles
-        for pos in coordinate_generator.car_park_positions:
-            start = pos
-            end = (pos[0] + coordinate_generator.rect_width, 
-                   pos[1] + coordinate_generator.rect_height)
-            cv2.rectangle(image, start, end, (0, 0, 255), 2)
+        # Draw all positions
+        display_image = coordinate_generator.draw_positions(image)
         
-        # Add position counter
-        cv2.rectangle(image, (10, 10), (250, 40), (0, 0, 0), -1)
-        cv2.putText(image, f"Positions: {len(coordinate_generator.car_park_positions)}", 
-                   (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # Add position counter and mode indicator
+        mode_text = f"Mode: {'Rectangular (P)' if coordinate_generator.mode == 'p' else 'Irregular (I)'}"
+        if coordinate_generator.mode == 'i' and coordinate_generator.irregular_points:
+            mode_text += f" - Point {len(coordinate_generator.irregular_points)}/4"
         
-        cv2.imshow("Parking Space Coordinator", image)
+        cv2.rectangle(display_image, (10, 10), (400, 70), (0, 0, 0), -1)
+        cv2.putText(display_image, f"Positions: {len(coordinate_generator.car_park_positions)}", 
+                   (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(display_image, mode_text, 
+                   (15, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        
+        cv2.imshow("Parking Space Coordinator", display_image)
         cv2.setMouseCallback("Parking Space Coordinator", coordinate_generator.mouseClick)
         
         key = cv2.waitKey(1) & 0xFF  
-        if key == ord("q"):
+        if key == ord("q") or key == 27:  # q or ESC
             break
-        elif key == 27:  # ESC
-            break
+        elif key == ord("p"):
+            coordinate_generator.set_mode('p')
+        elif key == ord("i"):
+            coordinate_generator.set_mode('i')
         elif key == ord("r"):
             coordinate_generator.car_park_positions = []
+            coordinate_generator.irregular_points = []
             coordinate_generator.save_positions()
             print("Reset all positions")
         elif key == ord("s"):
             coordinate_generator.save_positions()
             print("Saved positions")
-            break
     
     cv2.destroyAllWindows()
 
