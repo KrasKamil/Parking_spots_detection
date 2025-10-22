@@ -31,7 +31,7 @@
             "name": "Blok 2",
             "rect_width": 87,
             "rect_height": 200,
-            "threshold": 1100,
+            "threshold": 900,
             "positions_file": "data/parking_lots/blok_2_positions",
             "source_image": "data/source/img/blok_2_image.png",
             "video_source": "data/source/video/blok_2.mp4"

@@ -13,7 +13,7 @@ class ParkClassifier:
                  rect_height: int = 48,
                  processing_params: dict = None):
         
-        self.car_park_positions = self._read_positions(car_park_positions_path)
+        self.car_park_positions, self.route_points = self._read_positions(car_park_positions_path)
         self.rect_height = rect_height
         self.rect_width = rect_width
         self.car_park_positions_path = car_park_positions_path
@@ -30,17 +30,25 @@ class ParkClassifier:
             "dilate_iterations": 1
         }
     
-    def _read_positions(self, car_park_positions_path: str) -> List:
-        """Read parking positions from pickle file"""
+    def _read_positions(self, car_park_positions_path: str) -> Tuple[List, List]:
+        """Read parking positions and route points from pickle file"""
         if not os.path.exists(car_park_positions_path):
             print(f"Positions file not found: {car_park_positions_path}")
-            return []
+            return [], []
         try:
             with open(car_park_positions_path, 'rb') as f:
-                return pickle.load(f)
+                data = pickle.load(f)
+
+                if isinstance(data, list):
+                    # Stary format (tylko lista pozycji)
+                    return data, []
+                else:
+                    # Nowy format (słownik)
+                    return data.get('car_park_positions', []), data.get('route_points', [])
+
         except Exception as e:
             print(f"Error reading positions file: {e}")
-            return []
+            return [], []
     
     def classify(self, 
                  image: np.ndarray, 
@@ -128,6 +136,11 @@ class ParkClassifier:
         # Draw info panel
         self._draw_info_panel(image, empty_spaces, len(self.car_park_positions))
         
+        # NOWE: Wizualizacja trasy do pierwszego wolnego miejsca
+        first_empty_space = next((s for s in space_details if s['is_empty']), None)
+        if first_empty_space and self.route_points:
+            self._draw_route_to_space(image, first_empty_space)
+            
         stats = {
             'empty_spaces': empty_spaces,
             'occupied_spaces': occupied_spaces,
@@ -138,6 +151,69 @@ class ParkClassifier:
         
         return image, stats
     
+    def _draw_route_to_space(self, image: np.ndarray, target_space: dict): 
+        """Draw route from route points to the target parking space"""
+        if not self.route_points:
+            return
+            
+        # Środek wolnego miejsca (używamy target_space)
+        points = target_space['points'] 
+        end_x = sum(p[0] for p in points) // len(points)
+        end_y = sum(p[1] for p in points) // len(points)
+        end_point = (end_x, end_y)
+
+        color = (255, 255, 0) # Żółty/cyjan
+
+        # Użyj wszystkich punktów trasy dojazdu
+        route_path = list(self.route_points)
+        route_path.append(end_point)
+
+        for i in range(1, len(route_path)):
+            p1 = route_path[i-1]
+            p2 = route_path[i]
+
+            # Rysowanie linii
+            cv2.line(image, p1, p2, color, 3)
+
+            # Dodanie strzałki na końcu każdego segmentu
+            self._draw_arrowhead(image, p1, p2, color) # Rysuj grot strzałki na każdym segmencie (wizualizacja kierunku)
+            
+
+        # 2. Podświetlenie numeru wolnego miejsca
+        center_x = end_point[0]
+        center_y = end_point[1]
+        cv2.circle(image, end_point, 15, color, 4)
+
+        cv2.putText(image, "DOJAZD", (center_x - 30, center_y + 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+    
+    def _draw_arrowhead(self, img, p1, p2, color):
+        """Draw a simple arrowhead on the line segment from p1 to p2"""
+        v = np.array(p2) - np.array(p1)
+        
+        # Zabezpieczenie przed zerową długością wektora
+        if np.linalg.norm(v) == 0:
+            return
+            
+        # Oblicz wektor kierunkowy i jednostkowy
+        v_norm = v / np.linalg.norm(v)
+
+        # Kąt wektora
+        angle = np.arctan2(v[1], v[0])
+
+        # Długość strzałki
+        arrow_len = 20
+
+        # Obliczenie punktów bocznych (pod kątem +/- 30 stopni)
+        a1 = angle - np.pi/6
+        a2 = angle + np.pi/6
+
+        pt1 = (int(p2[0] - arrow_len * np.cos(a1)), int(p2[1] - arrow_len * np.sin(a1)))
+        pt2 = (int(p2[0] - arrow_len * np.cos(a2)), int(p2[1] - arrow_len * np.sin(a2)))
+
+        cv2.line(img, p2, pt1, color, 3)
+        cv2.line(img, p2, pt2, color, 3)
+        
     def _draw_info_panel(self, image: np.ndarray, empty_spaces: int, total_spaces: int):
         """Draw information panel on image"""
         # Background rectangle
@@ -199,35 +275,49 @@ class CoordinateDenoter:
         self.car_park_positions = []
         
         # Mode settings
-        self.mode = 'p'  # 'p' for rectangular (default), 'i' for irregular
+        self.mode = 'p'  # 'p' for rectangular (default), 'i' for irregular, 't' for route points
         self.irregular_points = []  # Temporary storage for irregular shape points
+        self.route_points = [] # Points for visualizing route/arrows
         self.temp_image = None  # For displaying temporary points
         
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(car_park_positions_path), exist_ok=True)
     
     def set_mode(self, mode: str):
-        """Set annotation mode: 'p' for rectangular, 'i' for irregular"""
-        if mode in ['p', 'i']:
+        """Set annotation mode: 'p' for rectangular, 'i' for irregular , 't' for route"""
+        if mode in ['p', 'i', 't']:
             self.mode = mode
             self.irregular_points = []  # Reset temporary points when changing mode
-            print(f"Mode changed to: {'Rectangular (P)' if mode == 'p' else 'Irregular (I)'}")
+            print(f"Mode changed to: {'Rectangular (P)' if mode == 'p' else 'Irregular (I)' if mode == 'i' else 'Route Points (T)'}")
         else:
-            print(f"Invalid mode: {mode}. Use 'p' or 'i'")
+            print(f"Invalid mode: {mode}. Use 'p' or 'i' or 't'.")
     
     def read_positions(self) -> List:
         """Read positions from file"""
+        # ... (zmień zwracany typ na np. dict w myśl przyszłej implementacji)
         if os.path.exists(self.car_park_positions_path):
             try:
                 with open(self.car_park_positions_path, 'rb') as f:
-                    self.car_park_positions = pickle.load(f)
-                    # Convert old format to new format if needed
-                    self._convert_old_format()
+                    data = pickle.load(f)
+
+                    if isinstance(data, list):
+                        # Old format (lista pozycji)
+                        self.car_park_positions = data
+                        self.route_points = []
+                        self._convert_old_format() # Konwersja tylko car_park_positions
+                    else:
+                        # Nowy format (słownik)
+                        self.car_park_positions = data.get('car_park_positions', [])
+                        self.route_points = data.get('route_points', [])
+                        self._convert_old_format() # Konwersja tylko car_park_positions
+
             except Exception as e:
                 print(f"Error reading positions: {e}")
                 self.car_park_positions = []
-        
+                self.route_points = []
+
         return self.car_park_positions
+        
     
     def _convert_old_format(self):
         """Convert old (x,y) format to new dict format with 4 points"""
@@ -256,10 +346,14 @@ class CoordinateDenoter:
     
     def save_positions(self):
         """Save positions to file"""
+        data_to_save = {
+            'car_park_positions': self.car_park_positions,
+            'route_points': self.route_points
+        }
         try:
             with open(self.car_park_positions_path, 'wb') as f:
-                pickle.dump(self.car_park_positions, f)
-            print(f"Saved {len(self.car_park_positions)} positions to {self.car_park_positions_path}")
+                pickle.dump(data_to_save, f) # Zapisz słownik
+            print(f"Saved {len(self.car_park_positions)} positions and {len(self.route_points)} route points to {self.car_park_positions_path}")
         except Exception as e:
             print(f"Error saving positions: {e}")
     
@@ -296,7 +390,12 @@ class CoordinateDenoter:
                     print(f"Added irregular position with points: {self.irregular_points}")
                     self.irregular_points = []  # Reset for next shape
                     self.save_positions()
-        
+            elif self.mode == 't': # Route points mode
+                self.route_points.append((x, y))
+                print(f"Added route point at: ({x}, {y})")
+                self.save_positions()
+                
+                
         elif events == cv2.EVENT_RBUTTONDOWN:
             # Remove position if clicked inside existing shape
             for index, pos in enumerate(self.car_park_positions):
@@ -314,7 +413,18 @@ class CoordinateDenoter:
             if self.mode == 'i' and self.irregular_points:
                 print(f"Cancelled irregular shape (had {len(self.irregular_points)} points)")
                 self.irregular_points = []
-    
+                
+            # Remove nearest route point on right-click in mode 't'    
+            if self.mode == 't' and self.route_points:
+                # Find nearest route point to remove
+                distances = [np.sqrt((px - x)**2 + (py - y)**2) for px, py in self.route_points]
+                min_dist_index = np.argmin(distances)
+
+                if distances[min_dist_index] < 50: # Usuń tylko jeśli jest blisko (np. 50px)
+                    removed_point = self.route_points.pop(min_dist_index)
+                    print(f"Removed route point: {removed_point}. Remaining: {len(self.route_points)}")
+                    self.save_positions()
+        
     def draw_positions(self, image: np.ndarray) -> np.ndarray:
         """Draw all positions on image"""
         display_image = image.copy()
@@ -350,5 +460,17 @@ class CoordinateDenoter:
                 for i in range(len(self.irregular_points) - 1):
                     cv2.line(display_image, self.irregular_points[i], 
                             self.irregular_points[i + 1], (0, 255, 255), 1)
+        # CODE FOR ROUTE POINTS
+        if self.route_points:
+            # Draw lines between points and point numbers
+            for i in range(len(self.route_points)):
+                cv2.circle(display_image, self.route_points[i], 8, (255, 255, 0), -1) # Kropka punktu
+                cv2.putText(display_image, str(i), 
+                            (self.route_points[i][0] + 10, self.route_points[i][1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+
+                if i > 0:
+                    cv2.line(display_image, self.route_points[i-1], 
+                            self.route_points[i], (255, 255, 0), 2) # Linia trasy
         
         return display_image
