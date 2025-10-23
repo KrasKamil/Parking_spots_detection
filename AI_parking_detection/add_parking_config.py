@@ -73,8 +73,8 @@ def add_parking_config():
         "rect_height": rect_height, 
         "threshold": threshold,
         "positions_file": positions_file,
-        "source_image": image_path if image_path else f"data/source/{lot_name}_image.png",
-        "video_source": video_path if video_path else f"data/source/{lot_name}_video.mp4"
+        "source_image": image_path if image_path else f"data/source/img/{lot_name}.png",
+    "video_source": video_path if video_path else f"data/source/video/{lot_name}.mp4"
     }
     
     # Stwórz folder na pozycje jeśli nie istnieje

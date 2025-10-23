@@ -7,9 +7,9 @@ import argparse
 points = []
 
 def click_event(event, x, y, flags, param):
-    global points, img
+    global points, img, original_img
 
-    # When left mouse button is clicked
+    #  Left click – add points
     if event == cv2.EVENT_LBUTTONDOWN:
         points.append((x, y))
         cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
@@ -30,10 +30,16 @@ def click_event(event, x, y, flags, param):
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.imshow("Image", img)
 
+    #  Right click – reset everything
+    elif event == cv2.EVENT_RBUTTONDOWN:
+        print("🔄 Resetting points and image...")
+        points.clear()
+        img = original_img.copy()
+        cv2.imshow("Image", img)
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate dimensions of parking spaces")
-    parser.add_argument("-i","--image", required=True, help="Path to the image file")
+    parser.add_argument("-i", "--image", required=True, help="Path to the image file")
     args = parser.parse_args()
     
     base_folder = "data/source/img"
@@ -43,19 +49,22 @@ def main():
         print(f"Image not found: {image_path}")
         return
     
-    global img
+    global img, original_img
     img = cv2.imread(image_path)
     if img is None:
         print(f"Failed to load image: {image_path}")
         return
+
+    original_img = img.copy()
     
     cv2.imshow("Image", img)
     cv2.setMouseCallback("Image", click_event)
 
     print(f"\nLoaded image: {image_path}")
     print("Instructions:")
-    print("- Left-click two points to measure width/height.")
-    print("- Press ESC to quit.\n")
+    print("- 🖱️ Left-click two points to measure width/height.")
+    print("- 🖱️ Right-click to reset points.")
+    print("- ⎋ Press ESC to quit.\n")
 
     while True:
         key = cv2.waitKey(1) & 0xFF

@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 from typing import List, Tuple, Optional, Union
 import os
+import heapq # For implemeting priority queue A*
 
 class ParkClassifier:
     """Generic parking space classifier using digital image processing"""
@@ -136,10 +137,14 @@ class ParkClassifier:
         # Draw info panel
         self._draw_info_panel(image, empty_spaces, len(self.car_park_positions))
         
-        # NOWE: Wizualizacja trasy do pierwszego wolnego miejsca
+        # 1. Znajdź cel (pierwsze wolne miejsce)
         first_empty_space = next((s for s in space_details if s['is_empty']), None)
+        
+        # 2. Zbuduj listę przeszkód
+        occupied_spaces_details = [s for s in space_details if not s['is_empty']]
+        
         if first_empty_space and self.route_points:
-            self._draw_route_to_space(image, first_empty_space)
+            self._draw_pathfinding_route(image, first_empty_space, occupied_spaces_details)
             
         stats = {
             'empty_spaces': empty_spaces,
@@ -150,6 +155,48 @@ class ParkClassifier:
         }
         
         return image, stats
+    
+    def _draw_pathfinding_route(self, image: np.ndarray, target_space: dict, occupied_spaces: List[dict]):
+        """Wyznacza i rysuje trasę A* do celu."""
+        
+        # 1. Węzeł startowy (pierwszy punkt trasy)
+        start_node = self.route_points[0]
+        
+        # 2. Węzeł docelowy: Znajdź najbliższy węzeł trasy do celu
+        points = target_space['points']
+        target_center = (sum(p[0] for p in points) // len(points), sum(p[1] for p in points) // len(points))
+        
+        # Najpierw docieramy do najbliższego węzła trasy, który jest najbliżej miejsca
+        # (lub do ostatniego, jeśli to miejsce jest na końcu trasy)
+        end_node_before_spot = self._get_nearest_route_node(target_center)
+        
+        if end_node_before_spot is None:
+            return
+
+        # 3. Uruchom Pathfinding
+        found_path = self._find_path_a_star(start_node, end_node_before_spot, occupied_spaces)
+        
+        if found_path:
+            # Dodaj ostatni segment: z ostatniego węzła do środka miejsca
+            final_route = found_path + [target_center] 
+            
+            color = (255, 255, 0)
+            
+            # Rysowanie wyznaczonej trasy
+            for i in range(1, len(final_route)):
+                p1 = final_route[i-1]
+                p2 = final_route[i]
+                
+                cv2.line(image, p1, p2, color, 4)
+                self._draw_arrowhead(image, p1, p2, color) 
+                
+            # Podświetlenie celu
+            cv2.circle(image, target_center, 20, color, -1)
+            cv2.putText(image, "DOJAZD", (target_center[0] - 30, target_center[1] + 40), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        else:
+            # Jeśli nie znaleziono trasy (np. całkowicie zablokowane)
+            print("Nie znaleziono bezpiecznej trasy do miejsca docelowego.")
     
     def _draw_route_to_space(self, image: np.ndarray, target_space: dict): 
         """Draw route from route points to the target parking space"""
@@ -259,6 +306,90 @@ class ParkClassifier:
         dilate = cv2.dilate(blur, kernel_size, iterations=params["dilate_iterations"])
         
         return dilate
+    
+    def _get_nearest_route_node(self, target_point: Tuple[int, int]) -> Optional[Tuple[int, int]]:
+        """Find the nearest route point to the target point"""
+        if not self.route_points:
+            return None
+        
+        # Calculating Euclidean distances
+        distances = [np.linalg.norm(np.array(p) - np.array(target_point)) for p in self.route_points]
+        min_index = np.argmin(distances)
+        return self.route_points[min_index]
+    
+    def _find_path_a_star(self, start_node: Tuple[int, int], end_node: Tuple[int, int], occupied_space_details: List[dict]) -> Optional[List[Tuple[int, int]]]:
+        """Implementacja uproszczonego algorytmu A* na grafie Route Points."""
+        
+        if start_node not in self.route_points or end_node not in self.route_points:
+            # Jeśli punkty Start lub End nie są węzłami Route Points, coś jest nie tak (lub trzeba je tymczasowo dodać)
+            return None
+
+        nodes = self.route_points
+        # Tworzenie krawędzi grafu (połączenie z sąsiadami)
+        graph = {node: [] for node in nodes}
+        
+        # Dla prostego grafu opartym na kolejności, każdy węzeł łączy się z sąsiadami na liście
+        for i in range(len(nodes)):
+            if i > 0:
+                graph[nodes[i]].append(nodes[i-1]) # Połączenie wstecz
+            if i < len(nodes) - 1:
+                graph[nodes[i]].append(nodes[i+1]) # Połączenie do przodu
+
+        # Heurystyka (odległość Euklidesowa do celu)
+        def heuristic(node):
+            return np.linalg.norm(np.array(node) - np.array(end_node))
+
+        # Algorytm A*
+        queue = [(0 + heuristic(start_node), 0, start_node, [start_node])] # (f, g, node, path)
+        visited_g = {start_node: 0} # Przechowuje najmniejszy koszt g znaleziony dla węzła
+
+        while queue:
+            f, g, current_node, path = heapq.heappop(queue)
+
+            if current_node == end_node:
+                return path # ZNALEZIONO ŚCIEŻKĘ!
+
+            for neighbor in graph[current_node]:
+                # Edge cost = 1 ( or use Euclidean distance if we want shorter paths)
+                # We use Euclidean distance for cost
+                cost = np.linalg.norm(np.array(current_node) - np.array(neighbor)) 
+                new_g = g + cost
+
+                # Checking for collisions (Przeszkody)
+                # Sprawdź, czy segment (current_node -> neighbor) przechodzi przez ZAJĘTE miejsce parkingowe
+                if self._segment_intersects_occupied_space(current_node, neighbor, occupied_space_details):
+                    continue # Ignore this path (endless obstacle)
+
+                if neighbor not in visited_g or new_g < visited_g[neighbor]:
+                    visited_g[neighbor] = new_g
+                    new_f = new_g + heuristic(neighbor)
+                    heapq.heappush(queue, (new_f, new_g, neighbor, path + [neighbor]))
+        
+        return None # The path was not found
+    
+    def _segment_intersects_occupied_space(self, p1: Tuple[int, int], p2: Tuple[int, int], occupied_spaces: List[dict]) -> bool:
+        """Check if the line segment p1->p2 intersects any occupied parking space"""
+        # UŻYJMY ZAAWANSOWANEGO UPROSZCZENIA: Sprawdź 5 punktów na krawędzi
+    
+        for occupied_space in occupied_spaces:
+            # Pomiń sprawdzenie dla miejsc nieregularnych, jeśli ich maska koliduje (założenie: trasa ma omijać parkingi)
+            
+            # Omijamy sprawdzanie, jeśli polygon jest zbyt skomplikowany. 
+            # Zamiast tego, dla bezpieczeństwa, sprawdźmy bounding box zajętego miejsca
+            points = occupied_space['points']
+            pts = np.array(points, dtype=np.int32)
+
+            # Sprawdzenie punktów na linii p1-p2
+            num_checks = 5
+            for i in range(num_checks + 1):
+                t = i / num_checks
+                check_x = int(p1[0] * (1-t) + p2[0] * t)
+                check_y = int(p1[1] * (1-t) + p2[1] * t)
+                
+                # Jeśli punkt na ścieżce znajduje się wewnątrz zajętego polygonu: KOLIZJA!
+                if cv2.pointPolygonTest(pts, (check_x, check_y), False) >= 0:
+                    return True
+        
 
 
 class CoordinateDenoter:

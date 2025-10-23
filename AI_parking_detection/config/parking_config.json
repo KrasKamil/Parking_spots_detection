@@ -24,7 +24,7 @@
             "rect_height": 200,
             "threshold": 1250,
             "positions_file": "data/parking_lots/blok_positions",
-            "source_image": "data/source/img/blok_image.png",
+            "source_image": "data/source/img/blok.png",
             "video_source": "data/source/video/output1.mp4"
         },
         "blok_2": {
@@ -33,7 +33,7 @@
             "rect_height": 200,
             "threshold": 900,
             "positions_file": "data/parking_lots/blok_2_positions",
-            "source_image": "data/source/img/blok_2_image.png",
+            "source_image": "data/source/img/blok_2.png",
             "video_source": "data/source/video/blok_2.mp4"
         },
         "blok_3": {
@@ -51,8 +51,17 @@
             "rect_height": 160,
             "threshold": 1000,
             "positions_file": "data/parking_lots/blok_wet_positions",
-            "source_image": "data/source/img/blok_wet_image.png",
+            "source_image": "data/source/img/blok_wet.png",
             "video_source": "data/source/video/blok_wet.mp4"
+        },
+        "blok_4": {
+            "name": "Blok 4",
+            "rect_width": 90,
+            "rect_height": 180,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/blok_4_positions",
+            "source_image": "data/source/img/blok_4.png",
+            "video_source": "data/source/video/blok_4.mp4"
         }
     },
     "processing_params": {

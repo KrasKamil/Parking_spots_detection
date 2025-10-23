@@ -3,6 +3,7 @@ import argparse
 import time
 from src.utils import ParkClassifier
 from src.config_manager import ConfigManager
+import os
 
 class ParkingMonitor:
     """Generic parking monitoring application"""
@@ -99,7 +100,9 @@ class ParkingMonitor:
             elif key == ord('s'):
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 filename = f"parking_snapshot_{timestamp}.jpg"
-                cv2.imwrite(filename, annotated_frame)
+                folder = 'results'
+                filepath = os.path.join(folder, filename)
+                cv2.imwrite(filepath, annotated_frame)
                 print(f"Saved snapshot: {filename}")
             elif key == ord('p'):
                 paused = not paused
