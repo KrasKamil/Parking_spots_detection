@@ -1,18 +1,19 @@
 import json
 import os
 
-def add_parking_config():
-    config_file = "config/parking_config.json"
-    
-    # Wczytaj istniejący config lub stwórz nowy
-    if os.path.exists(config_file):
-        with open(config_file, 'r') as f:
-            config = json.load(f)
+CONFIG_FILE = "config/parking_config.json"
+
+
+def load_or_create_config():
+    """Wczytuje istniejący plik konfiguracyjny lub tworzy nowy z domyślną strukturą."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
     else:
-        config = {
+        return {
             "parking_lots": {
                 "default": {
-                    "name": "Default Parking Lot", 
+                    "name": "Default Parking Lot",
                     "rect_width": 107,
                     "rect_height": 48,
                     "threshold": 900,
@@ -32,26 +33,69 @@ def add_parking_config():
                 "dilate_iterations": 1
             }
         }
+
+
+def save_config(config):
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
+def create_parking_lot(config, name, rect_width, rect_height, threshold, image_path, video_path):
+    """Dodaje nową konfigurację parkingu do config.json"""
+    positions_file = f"data/parking_lots/{name}_positions"
     
+    new_lot = {
+        "name": name.replace('_', ' ').title(),
+        "rect_width": rect_width,
+        "rect_height": rect_height,
+        "threshold": threshold,
+        "positions_file": positions_file,
+        "source_image": image_path or f"data/source/img/{name}.png",
+        "video_source": video_path or f"data/source/video/{name}.mp4"
+    }
+    
+    config["parking_lots"][name] = new_lot
+    os.makedirs("data/parking_lots", exist_ok=True)
+    save_config(config)
+    
+    print(f"\n✅ Dodano konfigurację '{name}'!")
+    print(f"📁 Plik pozycji: {positions_file}")
+    print(f"🖼️  Obraz: {new_lot['source_image']}")
+    print(f"🎥  Wideo: {new_lot['video_source']}")
+    print(f"\n📋 Następne kroki:")
+    print(f"1. Oznacz miejsca parkingowe:")
+    print(f"   python car_park_coordinate_generator.py --lot {name}")
+    print(f"2. Uruchom monitoring:")
+    print(f"   python app.py --lot {name}")
+
+
+def interactive_mode():
+    """Uruchamia tryb interaktywny (z pytaniami w konsoli)."""
+    config = load_or_create_config()
     print("Dostępne konfiguracje parkingów:")
-    for name in config["parking_lots"].keys():
-        print(f"  - {name}")
-    
+    for n in config["parking_lots"].keys():
+        print(f"  - {n}")
+
     print("\n=== Dodawanie nowej konfiguracji parkingu ===")
     
-    # Zbierz informacje od użytkownika
-    lot_name = input("Podaj nazwę nowego parkingu (np. 'mall_parking'): ").strip()
+    # === INSTRUKCJA DLA UŻYTKOWNIKA ===
+    print("--- Wprowadź wartości zmierzone w calculate_dimensions.py ---")
+    print(" (Użyj domyślnej wartości 107x48, jeśli nie wykonywano pomiaru)")
+    # =========================================
     
+    lot_name = input("Podaj nazwę nowego parkingu (np. 'mall_parking'): ").strip()
+
     if lot_name in config["parking_lots"]:
         overwrite = input(f"Konfiguracja '{lot_name}' już istnieje. Nadpisać? (y/n): ").strip().lower()
         if overwrite != 'y':
             print("Anulowano.")
             return
-    
+
     display_name = input(f"Podaj wyświetlaną nazwę (domyślnie '{lot_name.replace('_', ' ').title()}'): ").strip()
     if not display_name:
         display_name = lot_name.replace('_', ' ').title()
-    
+
     try:
         rect_width = int(input("Szerokość prostokąta miejsca parkingowego (domyślnie 107): ") or "107")
         rect_height = int(input("Wysokość prostokąta miejsca parkingowego (domyślnie 48): ") or "48")
@@ -59,42 +103,13 @@ def add_parking_config():
     except ValueError:
         print("Błędne wartości liczbowe. Używam domyślnych.")
         rect_width, rect_height, threshold = 107, 48, 900
-    
+
     image_path = input("Ścieżka do obrazu referencyjnego: ").strip()
     video_path = input("Ścieżka do wideo (opcjonalnie): ").strip()
-    
-    # Stwórz unikalne nazwy plików
-    positions_file = f"data/parking_lots/{lot_name}_positions"
-    
-    # Dodaj nową konfigurację
-    config["parking_lots"][lot_name] = {
-        "name": display_name,
-        "rect_width": rect_width,
-        "rect_height": rect_height, 
-        "threshold": threshold,
-        "positions_file": positions_file,
-        "source_image": image_path if image_path else f"data/source/img/{lot_name}.png",
-    "video_source": video_path if video_path else f"data/source/video/{lot_name}.mp4"
-    }
-    
-    # Stwórz folder na pozycje jeśli nie istnieje
-    os.makedirs("data/parking_lots", exist_ok=True)
-    os.makedirs("config", exist_ok=True)
-    
-    # Zapisz konfigurację
-    with open(config_file, 'w') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    
-    print(f"\n✅ Dodano konfigurację '{lot_name}'!")
-    print(f"📁 Plik pozycji: {positions_file}")
-    print(f"🖼️  Obraz: {config['parking_lots'][lot_name]['source_image']}")
-    print(f"🎥 Wideo: {config['parking_lots'][lot_name]['video_source']}")
-    
-    print(f"\n📋 Następne kroki:")
-    print(f"1. Oznacz miejsca parkingowe:")
-    print(f"   python car_park_coordinate_generator.py --lot {lot_name}")
-    print(f"2. Uruchom monitoring:")
-    print(f"   python app.py --lot {lot_name}")
+
+    create_parking_lot(config, lot_name, rect_width, rect_height, threshold, image_path, video_path)
+
+
 
 if __name__ == "__main__":
-    add_parking_config()
+    interactive_mode()
