@@ -1,9 +1,10 @@
 import cv2
 import pickle
 import numpy as np
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional, Union, Dict, Any
 import os
 import heapq # For implemeting priority queue A*
+import string
 
 class ParkClassifier:
     """Generic parking space classifier using digital image processing"""
@@ -52,109 +53,139 @@ class ParkClassifier:
             return [], []
     
     def classify(self, 
-                 image: np.ndarray, 
-                 processed_image: np.ndarray,
-                 threshold: int = 900) -> Tuple[np.ndarray, dict]:
-        """Classify parking spaces and return annotated image with statistics"""
-        
-        empty_spaces = 0
-        occupied_spaces = 0
-        space_details = []
-        
-        for i, pos in enumerate(self.car_park_positions):
-            # Handle both rectangle (4 points) and polygon formats
-            if isinstance(pos, dict):
-                # New format with 4 points
-                points = pos['points']
-                is_irregular = pos.get('irregular', False)
+            image: np.ndarray, 
+            processed_image: np.ndarray,
+            threshold: int = 900) -> Tuple[np.ndarray, dict]:
+            """
+            Classify parking spaces. Spaces are processed in order of their stable, 
+            numerical ID to ensure correct route prioritization.
+            """
+            
+            empty_spaces = 0
+            occupied_spaces = 0
+            space_details = []
+
+            # --- KLUCZOWA ZMIANA: SORTOWANIE WEDŁUG NUMERYCZNEGO ID ---
+            
+            # 1. Kopiowanie listy przed sortowaniem, aby nie modyfikować self.car_park_positions trwale
+            sorted_positions = self.car_park_positions.copy()
+            
+            # 2. Funkcja klucza sortowania: próbuje zamienić ID na INT, jeśli się nie da, używa dużej liczby.
+            def sort_key(pos):
+                raw_id = pos.get('id', '99999') 
+                try:
+                    # Sortuj według wartości numerycznej
+                    return int(raw_id)
+                except:
+                    # Nieudane parsowanie (np. ID to 'A1' lub '?') - ustawia dużą wartość na koniec.
+                    return 99999 
+
+            sorted_positions.sort(key=sort_key)
+            # --- KONIEC SORTOWANIA ---
+
+            # Iteracja po POSORTOWANEJ liście gwarantuje, że priorytet jest według ID (1, 2, 3...)
+            for pos in sorted_positions: 
                 
-                # Get bounding box
-                x_coords = [p[0] for p in points]
-                y_coords = [p[1] for p in points]
-                x_min, x_max = min(x_coords), max(x_coords)
-                y_min, y_max = min(y_coords), max(y_coords)
+                # POBIERANIE STAŁEGO ID
+                spot_id_raw = pos.get('id')
+                spot_id = str(spot_id_raw) if spot_id_raw is not None else '?'
                 
-                # Create mask for irregular shapes
-                if is_irregular:
-                    mask = np.zeros(processed_image.shape, dtype=np.uint8)
-                    pts = np.array(points, dtype=np.int32)
-                    cv2.fillPoly(mask, [pts], 255)
-                    crop = cv2.bitwise_and(processed_image[y_min:y_max, x_min:x_max], 
-                                          mask[y_min:y_max, x_min:x_max])
+                # Handle both rectangle (4 points) and polygon formats
+                if isinstance(pos, dict):
+                    # Nowy format
+                    points = pos['points']
+                    is_irregular = pos.get('irregular', False)
+                    
+                    # Get bounding box (potrzebne do wycięcia crop)
+                    x_coords = [p[0] for p in points]
+                    y_coords = [p[1] for p in points]
+                    x_min, x_max = min(x_coords), max(x_coords)
+                    y_min, y_max = min(y_coords), max(y_coords)
+                    
+                    # Create mask for irregular shapes
+                    if is_irregular:
+                        # Logika maskowania
+                        mask = np.zeros(processed_image.shape, dtype=np.uint8)
+                        pts = np.array(points, dtype=np.int32)
+                        cv2.fillPoly(mask, [pts], 255)
+                        crop = cv2.bitwise_and(processed_image[y_min:y_max, x_min:x_max], 
+                                            mask[y_min:y_max, x_min:x_max])
+                    else:
+                        crop = processed_image[y_min:y_max, x_min:x_max]
+                    
+                    # Count non-zero pixels
+                    count = cv2.countNonZero(crop)
+                    
                 else:
-                    crop = processed_image[y_min:y_max, x_min:x_max]
+                    # Stary format (dla kompatybilności wstecznej)
+                    x, y = pos
+                    points = [(x, y), 
+                            (x + self.rect_width, y), 
+                            (x + self.rect_width, y + self.rect_height), 
+                            (x, y + self.rect_height)]
+                    is_irregular = False
+                    
+                    col_start, col_stop = x, x + self.rect_width
+                    row_start, row_stop = y, y + self.rect_height
+                    crop = processed_image[row_start:row_stop, col_start:col_stop]
+                    count = cv2.countNonZero(crop)
                 
-                # Count non-zero pixels
-                count = cv2.countNonZero(crop)
+                # Classify space
+                is_empty = count < threshold
+                if is_empty:
+                    empty_spaces += 1
+                    color = (0, 255, 0)  # Green for empty
+                    thickness = 5
+                    status = "Empty"
+                else:
+                    occupied_spaces += 1
+                    color = (0, 0, 255)  # Red for occupied
+                    thickness = 2
+                    status = "Occupied"
                 
-            else:
-                # Old format (backward compatibility)
-                x, y = pos
-                points = [(x, y), 
-                         (x + self.rect_width, y), 
-                         (x + self.rect_width, y + self.rect_height), 
-                         (x, y + self.rect_height)]
-                is_irregular = False
+                # Store space details (UŻYWA STAŁEGO ID)
+                space_details.append({
+                    'id': spot_id, 
+                    'points': points,
+                    'status': status,
+                    'pixel_count': count,
+                    'is_empty': is_empty,
+                    'irregular': is_irregular
+                })
                 
-                col_start, col_stop = x, x + self.rect_width
-                row_start, row_stop = y, y + self.rect_height
-                crop = processed_image[row_start:row_stop, col_start:col_stop]
-                count = cv2.countNonZero(crop)
+                # Draw polygon
+                pts = np.array(points, dtype=np.int32)
+                cv2.polylines(image, [pts], True, color, thickness)
+                
+                # Draw space number (UŻYWA STAŁEGO ID)
+                center_x = sum(p[0] for p in points) // len(points)
+                center_y = sum(p[1] for p in points) // len(points)
+                
+                cv2.putText(image, spot_id, (center_x - 10, center_y), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                
+            # Draw info panel
+            self._draw_info_panel(image, empty_spaces, len(self.car_park_positions))
             
-            # Classify space
-            is_empty = count < threshold
-            if is_empty:
-                empty_spaces += 1
-                color = (0, 255, 0)  # Green for empty
-                thickness = 5
-                status = "Empty"
-            else:
-                occupied_spaces += 1
-                color = (0, 0, 255)  # Red for occupied
-                thickness = 2
-                status = "Occupied"
+            # Ponieważ space_details jest teraz posortowane według ID, to gwarantuje
+            # priorytet nawigacji dla najniższego numeru ID.
+            first_empty_space = next((s for s in space_details if s['is_empty']), None)
             
-            # Store space details
-            space_details.append({
-                'id': i,
-                'points': points,
-                'status': status,
-                'pixel_count': count,
-                'is_empty': is_empty,
-                'irregular': is_irregular
-            })
+            # 2. Zbuduj listę przeszkód
+            occupied_spaces_details = [s for s in space_details if not s['is_empty']]
             
-            # Draw polygon
-            pts = np.array(points, dtype=np.int32)
-            cv2.polylines(image, [pts], True, color, thickness)
+            if first_empty_space and self.route_points:
+                self._draw_pathfinding_route(image, first_empty_space, occupied_spaces_details)
+                
+            stats = {
+                'empty_spaces': empty_spaces,
+                'occupied_spaces': occupied_spaces,
+                'total_spaces': len(self.car_park_positions),
+                'occupancy_rate': (occupied_spaces / len(self.car_park_positions) * 100) if self.car_park_positions else 0,
+                'space_details': space_details
+            }
             
-            # Draw space number
-            center_x = sum(p[0] for p in points) // len(points)
-            center_y = sum(p[1] for p in points) // len(points)
-            cv2.putText(image, str(i), (center_x - 10, center_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
-        # Draw info panel
-        self._draw_info_panel(image, empty_spaces, len(self.car_park_positions))
-        
-        # 1. Znajdź cel (pierwsze wolne miejsce)
-        first_empty_space = next((s for s in space_details if s['is_empty']), None)
-        
-        # 2. Zbuduj listę przeszkód
-        occupied_spaces_details = [s for s in space_details if not s['is_empty']]
-        
-        if first_empty_space and self.route_points:
-            self._draw_pathfinding_route(image, first_empty_space, occupied_spaces_details)
-            
-        stats = {
-            'empty_spaces': empty_spaces,
-            'occupied_spaces': occupied_spaces,
-            'total_spaces': len(self.car_park_positions),
-            'occupancy_rate': (occupied_spaces / len(self.car_park_positions) * 100) if self.car_park_positions else 0,
-            'space_details': space_details
-        }
-        
-        return image, stats
+            return image, stats
     
     def _draw_pathfinding_route(self, image: np.ndarray, target_space: dict, occupied_spaces: List[dict]):
         """Wyznacza i rysuje trasę A* do celu."""
@@ -403,29 +434,80 @@ class CoordinateDenoter:
         self.rect_width = rect_width
         self.rect_height = rect_height
         self.car_park_positions_path = car_park_positions_path
-        self.car_park_positions = []
+        self.car_park_positions : List[Dict[str, Any]] = []
         
         # Mode settings
-        self.mode = 'p'  # 'p' for rectangular (default), 'i' for irregular, 't' for route points
+        self.mode = 'p'  # 'p' for rectangular (default), 'i' for irregular, 't' for route points,'e': edit ID
         self.irregular_points = []  # Temporary storage for irregular shape points
         self.route_points = [] # Points for visualizing route/arrows
         self.temp_image = None  # For displaying temporary points
         
-        # Create directory if it doesn't exist
+        # Nowe zmienne dla symulowanego pola tekstowego
+        self.is_editing_id = False
+        self.edit_target_index = -1
+        self.input_buffer = ""
+        self.edit_box_pos: Tuple[int, int] = (0, 0)
+        self.blink_state = True # Do symulacji migającego kursora
+        
         os.makedirs(os.path.dirname(car_park_positions_path), exist_ok=True)
+      
+        
+    def _get_next_id(self) -> int:
+        """
+        Generates the next unique integer ID. 
+        It prioritizes finding the lowest available ID (filling gaps) 
+        before returning the next consecutive ID after the max.
+        """
+        if not self.car_park_positions:
+            return 1
+            
+        existing_int_ids = set()
+        for pos in self.car_park_positions:
+            spot_id = pos.get('id')
+            try:
+                # Wczytujemy tylko ID, które da się bezpiecznie przekształcić na INT,
+                # ponieważ tylko numeryczne ID są brane pod uwagę przy lukach
+                if isinstance(spot_id, str) and spot_id.isdigit():
+                    existing_int_ids.add(int(spot_id))
+                elif isinstance(spot_id, int):
+                    existing_int_ids.add(spot_id)
+            except:
+                pass 
+        
+        if not existing_int_ids:
+            return 1
+
+        sorted_ids = sorted(list(existing_int_ids))
+        
+        # Sprawdź luki: Najniższa dostępna ID, zaczynając od 1
+        expected_id = 1
+        for current_id in sorted_ids:
+            if current_id > expected_id:
+                # Znaleziono lukę! Zwróć najniższą wolną ID.
+                return expected_id
+            expected_id = current_id + 1
+            
+        # Jeśli nie znaleziono luk (lista jest ciągła), zwróć następną po największej.
+        return expected_id # To jest max(sorted_ids) + 1
+    
     
     def set_mode(self, mode: str):
-        """Set annotation mode: 'p' for rectangular, 'i' for irregular , 't' for route"""
-        if mode in ['p', 'i', 't']:
+        """Set annotation mode: 'p', 'i', 't', or 'e'"""
+        if mode in ['p', 'i', 't', 'e']:
             self.mode = mode
-            self.irregular_points = []  # Reset temporary points when changing mode
-            print(f"Mode changed to: {'Rectangular (P)' if mode == 'p' else 'Irregular (I)' if mode == 'i' else 'Route Points (T)'}")
+            self.irregular_points = []
+            
+            if mode == 'p': text = 'Rectangular (P)'
+            elif mode == 'i': text = 'Irregular (I)'
+            elif mode == 't': text = 'Route Points (T)'
+            elif mode == 'e': text = 'Edit ID (E)'
+                
+            print(f"Mode changed to: {text}")
         else:
-            print(f"Invalid mode: {mode}. Use 'p' or 'i' or 't'.")
+            print(f"Invalid mode: {mode}. Use 'p', 'i', 't' or 'e'.")
     
-    def read_positions(self) -> List:
+    def read_positions(self) -> List[Dict[str, Any]]:
         """Read positions from file"""
-        # ... (zmień zwracany typ na np. dict w myśl przyszłej implementacji)
         if os.path.exists(self.car_park_positions_path):
             try:
                 with open(self.car_park_positions_path, 'rb') as f:
@@ -435,12 +517,12 @@ class CoordinateDenoter:
                         # Old format (lista pozycji)
                         self.car_park_positions = data
                         self.route_points = []
-                        self._convert_old_format() # Konwersja tylko car_park_positions
                     else:
                         # Nowy format (słownik)
                         self.car_park_positions = data.get('car_park_positions', [])
                         self.route_points = data.get('route_points', [])
-                        self._convert_old_format() # Konwersja tylko car_park_positions
+                    
+                    self._convert_old_format() # Upewnij się, że ID i format są poprawne
 
             except Exception as e:
                 print(f"Error reading positions: {e}")
@@ -451,13 +533,34 @@ class CoordinateDenoter:
         
     
     def _convert_old_format(self):
-        """Convert old (x,y) format to new dict format with 4 points"""
+        """Convert old formats to new dict format and ensure 'id' exists."""
         converted = []
+        next_id = 1
+        
+        # 1. Ustal, od jakiego ID zacząć numerację nowych pozycji
+        existing_ids = []
+        for pos in self.car_park_positions:
+            if isinstance(pos, dict) and 'id' in pos:
+                try:
+                    spot_id = pos['id']
+                    if isinstance(spot_id, str) and spot_id.isdigit():
+                         existing_ids.append(int(spot_id))
+                    elif isinstance(spot_id, int):
+                        existing_ids.append(spot_id)
+                except:
+                    pass
+        
+        if existing_ids:
+            next_id = max(existing_ids) + 1
+        
+        # 2. Przekonwertuj i uzupełnij brakujące ID
+        changed = False
         for pos in self.car_park_positions:
             if isinstance(pos, tuple):
-                # Old format: (x, y)
+                # Format: (x, y) - stary prostokąt
                 x, y = pos
                 converted.append({
+                    'id': str(next_id), # Dodaj ID
                     'points': [
                         (x, y),
                         (x + self.rect_width, y),
@@ -466,14 +569,23 @@ class CoordinateDenoter:
                     ],
                     'irregular': False
                 })
+                next_id += 1
+                changed = True
+            elif 'id' not in pos:
+                # Brakujące ID w nowym formacie
+                pos['id'] = str(next_id) 
+                converted.append(pos)
+                next_id += 1
+                changed = True
             else:
-                # Already new format
+                # Poprawny format
                 converted.append(pos)
         
-        if converted != self.car_park_positions:
+        if changed:
             self.car_park_positions = converted
-            print("Converted positions to new format")
+            print("Converted positions to new format and ensured unique IDs.")
             self.save_positions()
+    
     
     def save_positions(self):
         """Save positions to file"""
@@ -483,17 +595,82 @@ class CoordinateDenoter:
         }
         try:
             with open(self.car_park_positions_path, 'wb') as f:
-                pickle.dump(data_to_save, f) # Zapisz słownik
+                pickle.dump(data_to_save, f)
             print(f"Saved {len(self.car_park_positions)} positions and {len(self.route_points)} route points to {self.car_park_positions_path}")
         except Exception as e:
             print(f"Error saving positions: {e}")
+    
+    def _handle_text_input(self, key_code: int):
+        """Handles keyboard input when in ID editing state."""
+        char = chr(key_code)
+        
+        # 1. ENTER (zatwierdzenie)
+        if key_code == 13: # Enter key
+            if self.input_buffer:
+                new_id_str = self.input_buffer.strip()
+                current_spot_index = self.edit_target_index
+                
+                # Walidacja: Unikalność
+                existing_ids = [str(pos['id']) for i, pos in enumerate(self.car_park_positions) if i != self.edit_target_index]
+                
+                if not new_id_str:
+                    print("ID change cancelled - empty input.")
+                else:
+                    # Sprawdź, czy nowy ID już istnieje i czy nie jest to obecne ID
+                    existing_spot_index = -1
+                    for i, pos in enumerate(self.car_park_positions):
+                        if i != current_spot_index and str(pos.get('id')) == new_id_str:
+                            existing_spot_index = i
+                            break
+                            
+                    if existing_spot_index != -1:
+                        # --- LOGIKA ZAMIANY ID ---
+                        old_id_of_current_spot = str(self.car_park_positions[current_spot_index]['id'])
+                        
+                        # 1. Przypisz stare ID obecnego miejsca do miejsca istniejącego
+                        self.car_park_positions[existing_spot_index]['id'] = old_id_of_current_spot
+                        
+                        # 2. Przypisz nowe ID do miejsca edytowanego
+                        self.car_park_positions[current_spot_index]['id'] = new_id_str
+                        
+                        print(f"SUCCESS: Swapped ID '{new_id_str}' (was at index {existing_spot_index}) with ID '{old_id_of_current_spot}' (now at index {existing_spot_index}).")
+                        
+                    else:
+                        # --- LOGIKA NADPISANIA/USTAWIENIA NOWEGO UNIKALNEGO ID ---
+                        self.car_park_positions[current_spot_index]['id'] = new_id_str
+                        print(f"SUCCESS: ID updated to '{new_id_str}'.")
+
+                    self.save_positions()
+            else:
+                print("ID change cancelled - input was cleared.")
+            
+            # Zakończ edycję
+            self.is_editing_id = False
+            self.input_buffer = ""
+            self.edit_target_index = -1
+            self.set_mode('p') # Powrót do trybu domyślnego
+            return True
+
+        # 2. BACKSPACE
+        elif key_code == 8: # Backspace key
+            self.input_buffer = self.input_buffer[:-1]
+            return True
+
+        # 3. Zwykłe znaki (litery, cyfry)
+        elif char in string.ascii_letters or char in string.digits or char in [' ', '-', '_']:
+            if len(self.input_buffer) < 20: # Ograniczenie długości
+                self.input_buffer += char
+            return True
+        
+        return False # Nieobsługiwany klawisz
     
     def mouseClick(self, events: int, x: int, y: int, flags: int, params: int):
         """Mouse callback function with mode support"""
         if events == cv2.EVENT_LBUTTONDOWN:
             if self.mode == 'p':
-                # Rectangular mode: single click
+                # Rectangular mode (automatyczne dodawanie)
                 new_position = {
+                    'id': str(self._get_next_id()), # ID jako string
                     'points': [
                         (x, y),
                         (x + self.rect_width, y),
@@ -503,7 +680,7 @@ class CoordinateDenoter:
                     'irregular': False
                 }
                 self.car_park_positions.append(new_position)
-                print(f"Added rectangular position at: ({x}, {y})")
+                print(f"Added rectangular position (ID: {new_position['id']}) at: ({x}, {y})")
                 self.save_positions()
                 
             elif self.mode == 'i':
@@ -514,6 +691,7 @@ class CoordinateDenoter:
                 if len(self.irregular_points) == 4:
                     # Save the irregular shape
                     new_position = {
+                        'id':str(self._get_next_id()), # ID jako string
                         'points': self.irregular_points.copy(),
                         'irregular': True
                     }
@@ -526,20 +704,42 @@ class CoordinateDenoter:
                 print(f"Added route point at: ({x}, {y})")
                 self.save_positions()
                 
+            elif self.mode == 'e': 
+                if self.is_editing_id: # Jeśli już edytujemy, zignoruj kliknięcie
+                    return
+
+                # Znajdź kliknięte miejsce
+                target_spot_index = -1
+                for i, pos in enumerate(self.car_park_positions):
+                    points = pos['points']
+                    pts = np.array(points, dtype=np.int32)
+                    if cv2.pointPolygonTest(pts, (x, y), False) >= 0:
+                        target_spot_index = i
+                        break
                 
+                if target_spot_index != -1:
+                    # Rozpocznij edycję
+                    self.edit_target_index = target_spot_index
+                    self.input_buffer = str(self.car_park_positions[target_spot_index]['id'])
+                    self.is_editing_id = True
+                    self.edit_box_pos = (x, y) # Lokalizacja pola tekstowego (opcjonalnie, można użyć centrum)
+                    print(f"Entering edit mode for ID: {self.input_buffer}")
+                else:
+                    print("No spot found at clicked location.")
+                    
         elif events == cv2.EVENT_RBUTTONDOWN:
-            # Remove position if clicked inside existing shape
+            # Domyślne usuwanie pozycji
             for index, pos in enumerate(self.car_park_positions):
                 points = pos['points']
                 
-                # Check if click is inside polygon
                 pts = np.array(points, dtype=np.int32)
                 if cv2.pointPolygonTest(pts, (x, y), False) >= 0:
                     removed_pos = self.car_park_positions.pop(index)
-                    print(f"Removed position: {removed_pos['points']}")
+                    print(f"Removed position (ID: {removed_pos.get('id', 'N/A')})")
                     self.save_positions()
                     break
-            
+                
+                            
             # Also cancel current irregular drawing on right-click
             if self.mode == 'i' and self.irregular_points:
                 print(f"Cancelled irregular shape (had {len(self.irregular_points)} points)")
@@ -556,52 +756,93 @@ class CoordinateDenoter:
                     print(f"Removed route point: {removed_point}. Remaining: {len(self.route_points)}")
                     self.save_positions()
         
+
     def draw_positions(self, image: np.ndarray) -> np.ndarray:
-        """Draw all positions on image"""
+        """Draw all positions on image, including text input box if active."""
         display_image = image.copy()
         
         # Draw existing positions
         for i, pos in enumerate(self.car_park_positions):
             points = pos['points']
             is_irregular = pos.get('irregular', False)
+            spot_id = str(pos.get('id', '?'))
+
+            # Choose color
+            color = (0, 0, 255) # Domyślny kolor (Niebieski/Biały)
+            if is_irregular: 
+                color = (255, 0, 255) # Irregular (Fioletowy)
             
-            # Choose color based on type
-            color = (255, 0, 255) if is_irregular else (0, 0, 255)
-            
+            # Highlight currently edited spot (Zielony)
+            if self.is_editing_id and i == self.edit_target_index:
+                 color = (0, 255, 0) 
+
             # Draw polygon
             pts = np.array(points, dtype=np.int32)
             cv2.polylines(display_image, [pts], True, color, 2)
             
-            # Draw space number at center
+            # Draw space ID at center
             center_x = sum(p[0] for p in points) // len(points)
             center_y = sum(p[1] for p in points) // len(points)
-            cv2.putText(display_image, str(i), (center_x - 10, center_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            cv2.putText(display_image, spot_id, (center_x - 10, center_y), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
-        # Draw temporary irregular points
+        # --- Rysowanie symulowanego pola tekstowego (Edit ID) ---
+        if self.is_editing_id:
+            # Użyj centrum edytowanego miejsca jako punktu odniesienia
+            points = self.car_park_positions[self.edit_target_index]['points']
+            center_x = sum(p[0] for p in points) // len(points)
+            center_y = sum(p[1] for p in points) // len(points)
+            
+            # Pozycja pola tekstowego (wyśrodkowane nad lub pod miejscem)
+            box_width = 160
+            box_height = 30
+            box_start = (center_x - box_width // 2, center_y - box_height - 10)
+            box_end = (center_x + box_width // 2, center_y - 10)
+
+            # Rysowanie tła (miga)
+            if self.blink_state:
+                 # Aktywny stan: Białe tło i niebieska (lub żółta) ramka
+                 bg_color = (255, 255, 255) # Białe tło
+                 border_color = (255, 255, 0) # Żółta/Cyjan ramka (kontrastowa)
+            else:
+                 # Nieaktywny stan (mruganie): Szare tło
+                 bg_color = (150, 150, 150) # Szare tło
+                 border_color = (0, 0, 0) # Czarna ramka
+            
+            cv2.rectangle(display_image, box_start, box_end, bg_color, -1) 
+            cv2.rectangle(display_image, box_start, box_end, border_color, 2)
+            # Rysowanie tekstu
+            text_x = box_start[0] + 5
+            text_y = box_end[1] - 8
+            
+            # Wyświetl aktualny bufor wpisywanego tekstu
+            cv2.putText(display_image, self.input_buffer, 
+                        (text_x, text_y), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+        
+        # --- Draw temporary irregular points (Tryb 'i') ---
         if self.mode == 'i' and self.irregular_points:
             for idx, point in enumerate(self.irregular_points):
                 cv2.circle(display_image, point, 5, (0, 255, 255), -1)
                 cv2.putText(display_image, str(idx + 1), 
-                           (point[0] + 10, point[1] - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                            (point[0] + 10, point[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
             
-            # Draw lines connecting points
             if len(self.irregular_points) > 1:
                 for i in range(len(self.irregular_points) - 1):
                     cv2.line(display_image, self.irregular_points[i], 
-                            self.irregular_points[i + 1], (0, 255, 255), 1)
-        # CODE FOR ROUTE POINTS
+                             self.irregular_points[i + 1], (0, 255, 255), 1)
+                             
+        # --- CODE FOR ROUTE POINTS (Tryb 't') ---
         if self.route_points:
-            # Draw lines between points and point numbers
             for i in range(len(self.route_points)):
-                cv2.circle(display_image, self.route_points[i], 8, (255, 255, 0), -1) # Kropka punktu
+                cv2.circle(display_image, self.route_points[i], 8, (255, 255, 0), -1) 
                 cv2.putText(display_image, str(i), 
-                            (self.route_points[i][0] + 10, self.route_points[i][1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                             (self.route_points[i][0] + 10, self.route_points[i][1] - 10),
+                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
                 if i > 0:
                     cv2.line(display_image, self.route_points[i-1], 
-                            self.route_points[i], (255, 255, 0), 2) # Linia trasy
-        
+                             self.route_points[i], (255, 255, 0), 2)
+
         return display_image

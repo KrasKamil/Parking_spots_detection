@@ -6,7 +6,7 @@
             "rect_height": 48,
             "threshold": 900,
             "positions_file": "data/CarParkPos",
-            "source_image": "data/source/img/example_image.png",
+            "source_image": "data/source/img/example.png",
             "video_source": "data/source/video/carPark.mp4"
         },
         "new_parking": {
@@ -62,6 +62,15 @@
             "positions_file": "data/parking_lots/blok_4_positions",
             "source_image": "data/source/img/blok_4.png",
             "video_source": "data/source/video/blok_4.mp4"
+        },
+        "blok_5": {
+            "name": "Blok 5",
+            "rect_width": 80,
+            "rect_height": 165,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/blok_5_positions",
+            "source_image": "data/source/img/blok_5.png",
+            "video_source": "data/source/video/blok_5.mp4"
         }
     },
     "processing_params": {
