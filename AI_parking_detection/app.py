@@ -1,7 +1,8 @@
 import cv2
 import argparse
 import time
-from src.utils import ParkClassifier
+from src.parking_classifier import ParkClassifier
+from src.coordinate_denoter import CoordinateDenoter
 from src.config_manager import ConfigManager
 import os
 import numpy as np
@@ -63,10 +64,17 @@ class ParkingMonitor:
         if video_source is None:
             video_source = self.lot_config["video_source"]
 
-        cap = cv2.VideoCapture(video_source)
+        # KLUCZOWA ZMIANA: Próbujemy użyć back-endu FFMPEG dla lepszej obsługi strumieni IP/RTSP
+        cap = cv2.VideoCapture(video_source, cv2.CAP_FFMPEG)
         if not cap.isOpened():
-            print(f"Error: Could not open video source: {video_source}")
-            return
+            print(f"Warning: Could not open video source/IP stream using FFMPEG. Trying default backend...")
+            
+            # Próba z domyślnym back-endem (np. DirectShow, GStreamer, jeśli FFmpeg się nie powiódł)
+            cap = cv2.VideoCapture(video_source) 
+            
+            if not cap.isOpened():
+                print(f"Error: Could not open video source/IP stream: {video_source}")
+                return
         
         # Writer musi być skonfigurowany dla SKALOWANEGO obrazu wyjściowego
         writer = None

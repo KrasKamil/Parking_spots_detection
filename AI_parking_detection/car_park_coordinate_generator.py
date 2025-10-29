@@ -1,6 +1,6 @@
 import cv2
 import argparse
-from src.utils import CoordinateDenoter
+from src.coordinate_denoter import CoordinateDenoter
 from src.config_manager import ConfigManager
 import time 
 

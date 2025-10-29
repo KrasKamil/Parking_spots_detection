@@ -105,10 +105,10 @@ def interactive_mode():
         rect_width, rect_height, threshold = 107, 48, 900
 
     image_path = input("Ścieżka do obrazu referencyjnego: ").strip()
-    video_path = input("Ścieżka do wideo (opcjonalnie): ").strip()
+    # ZAKTUALIZOWANY MONIT:
+    video_path = input("Ścieżka do wideo (plik) lub URL kamery IP (np. rtsp://user:pass@ip:port/stream): ").strip()
 
     create_parking_lot(config, lot_name, rect_width, rect_height, threshold, image_path, video_path)
-
 
 
 if __name__ == "__main__":
