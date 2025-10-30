@@ -2,7 +2,7 @@ import json
 import os
 
 CONFIG_FILE = "config/parking_config.json"
-
+CALIBRATION_OUTPUT_FILE = "config/temp_calibration_data.json" 
 
 def load_or_create_config():
     """Wczytuje istniejący plik konfiguracyjny lub tworzy nowy z domyślną strukturą."""
@@ -69,6 +69,20 @@ def create_parking_lot(config, name, rect_width, rect_height, threshold, image_p
     print(f"2. Uruchom monitoring:")
     print(f"   python app.py --lot {name}")
 
+def read_and_clean_calibration_data():
+    """Odczytuje tymczasowe dane kalibracji i usuwa plik."""
+    if os.path.exists(CALIBRATION_OUTPUT_FILE):
+        try:
+            with open(CALIBRATION_OUTPUT_FILE, 'r') as f:
+                data = json.load(f)
+            os.remove(CALIBRATION_OUTPUT_FILE) # Usuwamy plik, aby nie używać starych danych
+            print(f"✅ Automatycznie wczytano wymiary z kalibracji: W={data.get('rect_width')}, H={data.get('rect_height')}")
+            return data.get('rect_width'), data.get('rect_height')
+        except Exception as e:
+            print(f"❌ Błąd odczytu/usuwania pliku kalibracji: {e}")
+            return None, None
+    return None, None
+
 
 def interactive_mode():
     """Uruchamia tryb interaktywny (z pytaniami w konsoli)."""
@@ -79,9 +93,17 @@ def interactive_mode():
 
     print("\n=== Dodawanie nowej konfiguracji parkingu ===")
     
-    # === INSTRUKCJA DLA UŻYTKOWNIKA ===
-    print("--- Wprowadź wartości zmierzone w calculate_dimensions.py ---")
-    print(" (Użyj domyślnej wartości 107x48, jeśli nie wykonywano pomiaru)")
+    # === AUTOMATYCZNE POBIERANIE DANYCH KALIBRACJI ===
+    default_width = 107
+    default_height = 48
+    
+    calibrated_width, calibrated_height = read_and_clean_calibration_data()
+    
+    if calibrated_width is not None and calibrated_height is not None:
+        default_width = calibrated_width
+        default_height = calibrated_height
+    
+    print(f"--- Wymiary do wprowadzenia (domyślnie: {default_width}x{default_height}px) ---")
     # =========================================
     
     lot_name = input("Podaj nazwę nowego parkingu (np. 'mall_parking'): ").strip()
@@ -97,12 +119,12 @@ def interactive_mode():
         display_name = lot_name.replace('_', ' ').title()
 
     try:
-        rect_width = int(input("Szerokość prostokąta miejsca parkingowego (domyślnie 107): ") or "107")
-        rect_height = int(input("Wysokość prostokąta miejsca parkingowego (domyślnie 48): ") or "48")
+        rect_width = int(input(f"Szerokość prostokąta miejsca parkingowego (domyślnie {default_width}): ") or str(default_width))
+        rect_height = int(input(f"Wysokość prostokąta miejsca parkingowego (domyślnie {default_height}): ") or str(default_height))
         threshold = int(input("Próg klasyfikacji (domyślnie 900): ") or "900")
     except ValueError:
         print("Błędne wartości liczbowe. Używam domyślnych.")
-        rect_width, rect_height, threshold = 107, 48, 900
+        rect_width, rect_height, threshold = default_width, default_height, 900
 
     image_path = input("Ścieżka do obrazu referencyjnego: ").strip()
     # ZAKTUALIZOWANY MONIT:

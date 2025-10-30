@@ -6,7 +6,7 @@ import time
 
 def create_coordinate_generator(parking_lot_name: str = "default"):
     """Create coordinate generator for specific parking lot"""
-    
+        
     config_manager = ConfigManager()
     lot_config = config_manager.get_parking_lot_config(parking_lot_name)
     
@@ -19,10 +19,14 @@ def create_coordinate_generator(parking_lot_name: str = "default"):
 LAST_BLINK_CHANGE = time.time()
 BLINK_INTERVAL_SECONDS = 0.5 # Mruganie co 0.5 sekundy
 
-def demonstration(parking_lot_name: str = "default", image_path: str = None):
+
+def demonstration(parking_lot_name: str = "default", image_path: str = None, initial_mode: str = None):
     """Interactive coordinate annotation tool"""
     
     coordinate_generator, lot_config = create_coordinate_generator(parking_lot_name)
+    if initial_mode:
+        coordinate_generator.set_mode(initial_mode)
+        print(f"Initial mode set from CLI: {initial_mode.upper()}")
     
     # Use provided image path or config default
     if image_path is None:
@@ -77,6 +81,8 @@ def demonstration(parking_lot_name: str = "default", image_path: str = None):
             mode_text = f"Route Points (T) - Total: {len(coordinate_generator.route_points)}"
         elif coordinate_generator.mode == 'e':
             mode_text = "Edit ID (E) - Click spot!" # Tryb edycji
+        elif coordinate_generator.mode == 'c': # <= NOWY TRYB C
+            mode_text = f"CALIBRATION (C) - Point {len(coordinate_generator.irregular_points)}/2"
             
         # Zmiana komunikatu, jeśli faktycznie wprowadzany jest tekst
         if coordinate_generator.is_editing_id:
@@ -119,6 +125,9 @@ def demonstration(parking_lot_name: str = "default", image_path: str = None):
                  coordinate_generator.blink_state = True
                  LAST_BLINK_CHANGE = time.time()
                  print("--- EDIT ID MODE ACTIVATED --- Click inside the spot you want to rename.")
+             elif key == ord("c"): # <= NOWA OBSŁUGA KLAWISZA C
+                 coordinate_generator.set_mode('c')
+                 print("--- CALIBRATION MODE ACTIVATED --- Click two corner points of a typical parking space.")
              elif key == ord("r"):
                  coordinate_generator.car_park_positions = []
                  coordinate_generator.irregular_points = []
@@ -139,6 +148,10 @@ if __name__ == "__main__":
     parser.add_argument('--image', '-i', default=None,
                        help='Path to image file')
     
+    # DODANA OBSŁUGA ARGUMENTU TRYBU
+    parser.add_argument('--mode', '-m', default=None, 
+                       help='Initial mode for the tool (e.g., "c" for calibration)') 
+    
     args = parser.parse_args()
     
     # List available configurations
@@ -146,4 +159,5 @@ if __name__ == "__main__":
     available_lots = config_manager.list_parking_lots()
     print(f"Available parking lot configurations: {available_lots}")
     
-    demonstration(args.lot, args.image)
+    # Wywołanie z przekazaniem argumentu 'mode'
+    demonstration(args.lot, args.image, initial_mode=args.mode)

@@ -30,71 +30,71 @@ def list_files_three_columns(folder, pattern="*.png", cols=3):
     return files
 
 
-def choose_file_interactively(files):
+def choose_file_interaktywnie(files):
     if not files:
         return None
     while True:
         choice = input("Wybierz plik (numer), wpisz 'latest' (najnowszy) lub 'q' aby anulować: ").strip().lower()
-        if choice in ("q", "quit", "exit"):
+        if choice == 'q':
             return None
-        if choice in ("latest", "n", "auto"):
-            latest = max(files, key=os.path.getctime)
-            print(f"Wybrano najnowszy plik: {os.path.basename(latest)}")
-            return latest
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(files):
-                selected = files[idx]
-                print(f"Wybrano: {os.path.basename(selected)}")
-                return selected
+        elif choice == 'latest':
+            image_path = files[-1]
+            print(f"Wybrano najnowszy plik: {os.path.basename(image_path)}")
+            return image_path
+        try:
+            index = int(choice) - 1
+            if 0 <= index < len(files):
+                image_path = files[index]
+                print(f"Wybrano plik: {os.path.basename(image_path)}")
+                return image_path
             else:
-                print("Numer poza zakresem. Spróbuj ponownie.")
-        else:
-            print("Nieprawidłowy wybór. Podaj numer, 'latest' lub 'q'.")
+                print("Nieprawidłowy numer.")
+        except ValueError:
+            print("Nieprawidłowy wybór. Wpisz numer, 'latest' lub 'q'.")
 
 
 def get_last_added_lot_name():
-    if not os.path.exists(CONFIG_PATH):
-        return None
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except Exception as e:
-        print(f"Błąd wczytania pliku konfiguracyjnego: {e}")
-        return None
-
-    lots = cfg.get("parking_lots", {})
-    if not lots:
-        return None
-    return list(lots.keys())[-1]
+    """Reads the last lot name saved by add_parking_config.py"""
+    temp_file = os.path.join("config", "temp_last_lot.json")
+    if os.path.exists(temp_file):
+        with open(temp_file, 'r') as f:
+            data = json.load(f)
+            return data.get('lot_name')
+    return None
 
 
-def run_all():
-    print("\n=== Rozpoczynam automatyczną konfigurację (Interaktywny tryb) ===")
-
-    # 1) Wybór pliku obrazu
-    files = list_files_three_columns(IMG_DIR, pattern="*.png", cols=3)
+def main():
+    print("=== Rozpoczynam automatyczną konfigurację (Interaktywny tryb) ===")
+    
+    # 1) Wybór pliku referencyjnego
+    files = list_files_three_columns(IMG_DIR)
     if not files:
-        print("Brak plików do przetworzenia. Umieść pliki PNG w 'data/source/img'.")
         return
 
-    image_path = choose_file_interactively(files)
+    image_path = choose_file_interaktywnie(files)
     if not image_path:
-        print("Anulowano wybór pliku.")
+        print("Anulowano przez użytkownika.")
         return
 
-    # 2) Uruchom calculate_dimensions.py
+    # 2) Kalibracja W/H (Uruchom generator w trybie 'c')
     try:
-        print("\n== Uruchamiam calculate_dimensions.py ==")
-        subprocess.run(["python", "calculate_dimensions.py", "-i", os.path.basename(image_path)], check=True)
-        print("✅ Zakończono calculate_dimensions.py. Prosimy o wprowadzenie zmierzonych wartości w następnym kroku.")
+        print("\n== Uruchamiam narzędzie do adnotacji W TRYBIE KALIBRACJI ==")
+        print("💡 INSTRUKCJA: Otwórz okno, naciśnij 'c', zmierz wymiary W/H (klikając dwa rogi) i zamknij okno.")
+        
+        subprocess.run(["python", "car_park_coordinate_generator.py", 
+                "--lot", "default", 
+                "--image", image_path, 
+                "--mode", "c"], 
+               check=True)
+        print("✅ Zakończono kalibrację. Zanotuj wyświetlone wymiary W/H przed przejściem dalej.")
+
     except subprocess.CalledProcessError as e:
-        print("❌ calculate_dimensions.py zakończył się błędem:", e)
+        print("❌ car_park_coordinate_generator.py zakończył się błędem w trybie kalibracji. Anulowano dalsze kroki.")
         return
 
-    # 3) Uruchom add_parking_config.py (Interaktywnie)
+    # 3) Dodawanie/modyfikacja konfiguracji (Interaktywnie)
     try:
-        print("\n== Uruchamiam add_parking_config.py (wprowadź parametry) ==")
+        print("\n== Uruchamiam add_parking_config.py (wprowadź zmierzone parametry) ==")
         # Uruchamiamy bez argumentów, wymuszając interaktywne zbieranie danych.
         subprocess.run(["python", "add_parking_config.py"], check=True)
 
@@ -110,9 +110,11 @@ def run_all():
 
     print(f"\n📦 Wykryto nazwę parkingu: {lot_name}")
 
-    # 5) Uruchom pozostałe kroki
+    # 5) Uruchom pozostałe kroki (Adnotacja i Monitoring)
+    # Wywołanie generatora po raz drugi - tym razem do oznaczania pozycji dla utworzonego 'lot_name'.
     try:
         print(f"\n== Uruchamiam car_park_coordinate_generator.py --lot {lot_name} ==")
+        print("📌 Teraz możesz oznaczyć wszystkie miejsca parkingowe (tryby 'p', 'i').")
         subprocess.run(["python", "car_park_coordinate_generator.py", "--lot", lot_name], check=True)
         print("✅ Zakończono car_park_coordinate_generator.py")
     except subprocess.CalledProcessError as e:
@@ -120,13 +122,15 @@ def run_all():
         return
 
     try:
-        print(f"\n== Uruchamiam app.py --lot {lot_name} ==")
+        print(f"\n== Uruchamiam app.py --lot {lot_name} (Monitoring) ==")
+        print("🎥 Uruchamiam podgląd monitoringu. Zamknij okno, aby zakończyć.")
         subprocess.run(["python", "app.py", "--lot", lot_name], check=True)
-        print("✅ Zakończono app.py")
+        print("✅ Zakończono monitoring.")
     except subprocess.CalledProcessError as e:
         print("❌ app.py zakończył się błędem:", e)
         return
-
+        
+    print("\n=== Sekwencja automatycznej konfiguracji zakończona powodzeniem! ===")
 
 if __name__ == "__main__":
-    run_all()
+    main()

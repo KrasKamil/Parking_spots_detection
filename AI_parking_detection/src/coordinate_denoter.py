@@ -4,13 +4,18 @@ import numpy as np
 from typing import List, Tuple, Dict, Any
 import os
 import string
+import math
+import json
+
+CALIBRATION_OUTPUT_FILE = "config/temp_calibration_data.json"
 
 # === KLASA CoordinateDenoter (Odpowiedzialna za Adnotację i Konfigurację) ===
 class CoordinateDenoter:
     """
     Generic coordinate annotation tool with rectangular and irregular modes.
     Odpowiedzialność: Zarządzanie pozycjami parkingowymi i punktami trasy (CRUD), 
-    obsługa interfejsu użytkownika (mysz, klawiatura, rysowanie tymczasowe).
+    obsługa interfejsu użytkownika (mysz, klawiatura, rysowanie tymczasowe), 
+    oraz zapis wyników kalibracji.
     """
     
     def __init__(self, 
@@ -24,7 +29,7 @@ class CoordinateDenoter:
         self.car_park_positions : List[Dict[str, Any]] = []
         
         # Mode settings
-        self.mode = 'p'  # 'p': rect, 'i': irregular, 't': route, 'e': edit ID
+        self.mode = 'p'  # 'p': rect, 'i': irregular, 't': route, 'e': edit ID, 'c': calibration
         self.irregular_points = []
         self.route_points = []
         
@@ -36,6 +41,20 @@ class CoordinateDenoter:
         
         os.makedirs(os.path.dirname(car_park_positions_path), exist_ok=True)
       
+    def _save_calibration_results(self, width: int, height: int):
+        """Zapisuje tymczasowe wyniki kalibracji do pliku JSON."""
+        data = {
+            "rect_width": width,
+            "rect_height": height
+        }
+        os.makedirs(os.path.dirname(CALIBRATION_OUTPUT_FILE), exist_ok=True)
+        try:
+            with open(CALIBRATION_OUTPUT_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+            print(f"✅ Wyniki kalibracji automatycznie zapisane do {CALIBRATION_OUTPUT_FILE}")
+        except Exception as e:
+            print(f"❌ Błąd zapisu wyników kalibracji: {e}")
+            
     # --- Zarządzanie Stanem i Plikami ---
     def _get_next_id(self) -> int:
         """Generuje następny unikalny ID numeryczny, uwzględniając luki."""
@@ -65,8 +84,8 @@ class CoordinateDenoter:
         return expected_id
     
     def set_mode(self, mode: str):
-        """Set annotation mode: 'p', 'i', 't', or 'e'"""
-        if mode in ['p', 'i', 't', 'e']:
+        """Set annotation mode: 'p', 'i', 't', 'e', or 'c'"""
+        if mode in ['p', 'i', 't', 'e', 'c']:
             self.mode = mode
             self.irregular_points = []
             
@@ -74,10 +93,12 @@ class CoordinateDenoter:
             elif mode == 'i': text = 'Irregular (I)'
             elif mode == 't': text = 'Route Points (T)'
             elif mode == 'e': text = 'Edit ID (E)'
+            elif mode == 'c': text = 'CALIBRATION (C)'
+            
                 
             print(f"Mode changed to: {text}")
         else:
-            print(f"Invalid mode: {mode}. Use 'p', 'i', 't' or 'e'.")
+            print(f"Invalid mode: {mode}. Use 'p', 'i', 't', 'e' or 'c'.")
     
     def read_positions(self) -> List[Dict[str, Any]]:
         """Read positions from file"""
@@ -272,6 +293,27 @@ class CoordinateDenoter:
                     print(f"Entering edit mode for ID: {self.input_buffer}")
                 else:
                     print("No spot found at clicked location.")
+            
+            elif self.mode == 'c': # <= TRYB KALIBRACJI
+                self.irregular_points.append((x, y))
+                print(f"Calibration Point {len(self.irregular_points)} added: ({x}, {y})")
+
+                if len(self.irregular_points) == 2:
+                    (x1, y1), (x2, y2) = self.irregular_points
+
+                    width = abs(x2 - x1)
+                    height = abs(y2 - y1)
+
+                    print("\n=== WYNIK KALIBRACJI Wymiarów ===")
+                    print(f"Szerokość (px): {width}")
+                    print(f"Wysokość (px): {height}")
+                    print("===================================")
+                    
+                    # ZAPIS WYNIKÓW DO PLIKU TYMCZASOWEGO
+                    self._save_calibration_results(width, height) 
+                    
+                    self.irregular_points = []
+                    #self.set_mode('p') # Powrót do domyślnego trybu
                     
         elif events == cv2.EVENT_RBUTTONDOWN:
             # Usuwanie pozycji
@@ -343,18 +385,35 @@ class CoordinateDenoter:
                         (text_x, text_y), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
         
-        # 3. Draw temporary irregular points (Tryb 'i')
-        if self.mode == 'i' and self.irregular_points:
+        # 3. Draw temporary points (Tryb 'i' i 'c')
+        if (self.mode == 'i' or self.mode == 'c') and self.irregular_points:
+            color = (0, 255, 255)
+            if self.mode == 'c' and len(self.irregular_points) == 1:
+                color = (0, 255, 0) # Pierwszy punkt kalibracji na zielono
+
             for idx, point in enumerate(self.irregular_points):
-                cv2.circle(display_image, point, 5, (0, 255, 255), -1)
-                cv2.putText(display_image, str(idx + 1), 
-                            (point[0] + 10, point[1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-            if len(self.irregular_points) > 1:
-                for i in range(len(self.irregular_points) - 1):
-                    cv2.line(display_image, self.irregular_points[i], 
-                             self.irregular_points[i + 1], (0, 255, 255), 1)
-                             
+                cv2.circle(display_image, point, 5, color, -1)
+                
+                # Rysowanie linii połączeniowej w trybie 'c' (kalibracja)
+                if self.mode == 'c' and len(self.irregular_points) == 2:
+                    (x1, y1), (x2, y2) = self.irregular_points
+                    
+                    # Rysowanie prostokąta kalibracyjnego
+                    cv2.rectangle(display_image, (x1, y1), (x2, y2), (255, 255, 0), 2) 
+
+            # Rysowanie etykiet/punktów w trybie 'i'
+            if self.mode == 'i':
+                for idx, point in enumerate(self.irregular_points):
+                    cv2.putText(display_image, str(idx + 1), 
+                                (point[0] + 10, point[1] - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+                if len(self.irregular_points) > 1:
+                    for i in range(len(self.irregular_points) - 1):
+                        cv2.line(display_image, self.irregular_points[i], 
+                                 self.irregular_points[i + 1], (0, 255, 255), 1)
+
+
         # 4. CODE FOR ROUTE POINTS (Tryb 't')
         if self.route_points:
             for i in range(len(self.route_points)):

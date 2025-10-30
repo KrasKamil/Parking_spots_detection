@@ -71,6 +71,15 @@
             "positions_file": "data/parking_lots/blok_5_positions",
             "source_image": "data/source/img/blok_5.png",
             "video_source": "data/source/video/blok_5.mp4"
+        },
+        "blok_6": {
+            "name": "Blok 6",
+            "rect_width": 100,
+            "rect_height": 179,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/blok_6_positions",
+            "source_image": "data/source/img/blok_5.png",
+            "video_source": "data/source/video/blok_5.mp4"
         }
     },
     "processing_params": {
