@@ -126,8 +126,8 @@ def interactive_mode():
         print("Błędne wartości liczbowe. Używam domyślnych.")
         rect_width, rect_height, threshold = default_width, default_height, 900
 
-    image_path = input("Ścieżka do obrazu referencyjnego: ").strip()
-    # ZAKTUALIZOWANY MONIT:
+    image_path = 'data/scource/img/'+input("Ścieżka do obrazu referencyjnego:(w folderze data/source/img) e.g plik.png ").strip()
+    
     video_path = input("Ścieżka do wideo (plik) lub URL kamery IP (np. rtsp://user:pass@ip:port/stream): ").strip()
 
     create_parking_lot(config, lot_name, rect_width, rect_height, threshold, image_path, video_path)

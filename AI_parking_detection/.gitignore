@@ -1,2 +1,3 @@
 *.mp4
 src/__pycache__/
+config/temp_calibration_data.json

@@ -157,7 +157,8 @@ if __name__ == "__main__":
     # List available configurations
     config_manager = ConfigManager()
     available_lots = config_manager.list_parking_lots()
-    print(f"Available parking lot configurations: {available_lots}")
+    display_lots = [lot for lot in available_lots if lot != 'default']
+    print(f"Available parking lot configurations: {display_lots}")
     
     # Wywołanie z przekazaniem argumentu 'mode'
     demonstration(args.lot, args.image, initial_mode=args.mode)

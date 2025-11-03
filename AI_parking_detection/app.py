@@ -6,6 +6,32 @@ from src.coordinate_denoter import CoordinateDenoter
 from src.config_manager import ConfigManager
 import os
 import numpy as np
+import subprocess
+
+def get_direct_youtube_url(youtube_url: str) -> str:
+        """Uses yt-dlp to extract the direct stream URL for a YouTube video."""
+        try:
+            # Polecenie yt-dlp do uzyskania bezpośredniego URL strumienia o najlepszej jakości wideo
+            command = [
+                'yt-dlp',
+                '--get-url',
+                '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                youtube_url
+            ]
+            
+            # Wykonaj polecenie i przechwyć wynik (URL)
+            direct_url = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL).strip()
+            
+            if direct_url.startswith('http'):
+                print("✅ Wykryto link YouTube. Pomyślnie uzyskano bezpośredni URL strumienia.")
+                return direct_url
+                
+        except FileNotFoundError:
+            print("❌ Błąd: Nie znaleziono polecenia 'yt-dlp'. Upewnij się, że jest zainstalowane.")
+        except Exception as e:
+            print(f"❌ Błąd podczas wyodrębniania URL z YouTube: {e}")
+            
+        return youtube_url # Zwróć oryginalny URL jako fallback
 
 class ParkingMonitor:
     """Generic parking monitoring application"""
@@ -25,6 +51,7 @@ class ParkingMonitor:
         
         print(f"Initialized monitor for: {self.lot_config['name']}")
         print(f"Total parking spaces: {len(self.classifier.car_park_positions)}")
+    
 
     def apply_overrides(self, args):
         """Override processing parameters from CLI"""
@@ -63,17 +90,22 @@ class ParkingMonitor:
         """Monitor parking from video source"""
         if video_source is None:
             video_source = self.lot_config["video_source"]
+        
+        # 💡 NOWA LOGIKA: Sprawdź i uzyskaj bezpośredni URL z YouTube
+        final_video_source = video_source
+        if "youtube.com" in video_source or "youtu.be" in video_source:
+             final_video_source = get_direct_youtube_url(video_source) # <-- Użycie yt-dlp
 
-        # KLUCZOWA ZMIANA: Próbujemy użyć back-endu FFMPEG dla lepszej obsługi strumieni IP/RTSP
-        cap = cv2.VideoCapture(video_source, cv2.CAP_FFMPEG)
+        # KLUCZOWA ZMIANA: Próbujemy użyć back-endu FFMPEG
+        cap = cv2.VideoCapture(final_video_source, cv2.CAP_FFMPEG)
         if not cap.isOpened():
             print(f"Warning: Could not open video source/IP stream using FFMPEG. Trying default backend...")
             
-            # Próba z domyślnym back-endem (np. DirectShow, GStreamer, jeśli FFmpeg się nie powiódł)
-            cap = cv2.VideoCapture(video_source) 
+            # Próba z domyślnym back-endem 
+            cap = cv2.VideoCapture(final_video_source) # <-- Używamy final_video_source
             
             if not cap.isOpened():
-                print(f"Error: Could not open video source/IP stream: {video_source}")
+                print(f"Error: Could not open video source/IP stream: {final_video_source}")
                 return
         
         # Writer musi być skonfigurowany dla SKALOWANEGO obrazu wyjściowego

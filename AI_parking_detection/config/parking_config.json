@@ -2,21 +2,21 @@
     "parking_lots": {
         "default": {
             "name": "Default Parking Lot",
+            "rect_width": 1,
+            "rect_height": 1,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/CarParkPos",
+            "source_image": "data/source/img/example.png",
+            "video_source": "data/source/video/carPark.mp4"
+        },
+        "Demo": {
+            "name": "Demo Lot",
             "rect_width": 107,
             "rect_height": 48,
             "threshold": 900,
             "positions_file": "data/CarParkPos",
             "source_image": "data/source/img/example.png",
             "video_source": "data/source/video/carPark.mp4"
-        },
-        "new_parking": {
-            "name": "New Parking Lot",
-            "rect_width": 120,
-            "rect_height": 50,
-            "threshold": 1000,
-            "positions_file": "data/parking_lots/new_parking_positions",
-            "source_image": "data/source/img/new_parking_image.png",
-            "video_source": "data/source/video/new_parking_video.mp4"
         },
         "blok": {
             "name": "Blok",
@@ -72,14 +72,14 @@
             "source_image": "data/source/img/blok_5.png",
             "video_source": "data/source/video/blok_5.mp4"
         },
-        "blok_6": {
-            "name": "Blok 6",
-            "rect_width": 100,
-            "rect_height": 179,
+        "Dobrowa_Gornicza": {
+            "name": "Dobrowa Gornicza",
+            "rect_width": 262,
+            "rect_height": 41,
             "threshold": 900,
-            "positions_file": "data/parking_lots/blok_6_positions",
-            "source_image": "data/source/img/blok_5.png",
-            "video_source": "data/source/video/blok_5.mp4"
+            "positions_file": "data/parking_lots/Dobrowa_Gornicza_positions",
+            "source_image": "data/source/img/dabrowa_gornicza.png",
+            "video_source": "https://www.youtube.com/watch?v=bmgJgTEjhtc"
         }
     },
     "processing_params": {
