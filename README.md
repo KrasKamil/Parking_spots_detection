@@ -75,9 +75,9 @@ AI_parking_detector/
 ### Install Dependencies
 
 ```bash
-pip install opencv-python numpy
-# Optional, for YouTube/IP support:
-pip install yt-dlp
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
 ## ⚙️ Automatic Setup (Recommended Workflow)
