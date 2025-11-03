@@ -3,6 +3,7 @@ import os
 
 CONFIG_FILE = "config/parking_config.json"
 CALIBRATION_OUTPUT_FILE = "config/temp_calibration_data.json" 
+TEMP_LOT_FILE = "config/temp_last_lot.json"
 
 def load_or_create_config():
     """Wczytuje istniejący plik konfiguracyjny lub tworzy nowy z domyślną strukturą."""
@@ -39,6 +40,16 @@ def save_config(config):
     os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
+    
+def save_last_lot_name(lot_name: str):
+    """Saves the name of the last successfully created lot to a temporary file."""
+    try:
+        os.makedirs(os.path.dirname(TEMP_LOT_FILE), exist_ok=True)
+        with open(TEMP_LOT_FILE, 'w') as f:
+            json.dump({"lot_name": lot_name}, f)
+        print(f"✅ Nazwa parkingu '{lot_name}' zapisana tymczasowo.")
+    except Exception as e:
+        print(f"❌ Błąd zapisu nazwy parkingu: {e}")
 
 
 def create_parking_lot(config, name, rect_width, rect_height, threshold, image_path, video_path):
@@ -58,6 +69,7 @@ def create_parking_lot(config, name, rect_width, rect_height, threshold, image_p
     config["parking_lots"][name] = new_lot
     os.makedirs("data/parking_lots", exist_ok=True)
     save_config(config)
+    save_last_lot_name(name)
     
     print(f"\n✅ Dodano konfigurację '{name}'!")
     print(f"📁 Plik pozycji: {positions_file}")
@@ -126,7 +138,7 @@ def interactive_mode():
         print("Błędne wartości liczbowe. Używam domyślnych.")
         rect_width, rect_height, threshold = default_width, default_height, 900
 
-    image_path = 'data/scource/img/'+input("Ścieżka do obrazu referencyjnego:(w folderze data/source/img) e.g plik.png ").strip()
+    image_path = 'data/source/img/'+input("Ścieżka do obrazu referencyjnego:(w folderze data/source/img) e.g plik.png ").strip()
     
     video_path = input("Ścieżka do wideo (plik) lub URL kamery IP (np. rtsp://user:pass@ip:port/stream): ").strip()
 
