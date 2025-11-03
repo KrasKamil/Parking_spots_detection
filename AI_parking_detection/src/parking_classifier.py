@@ -5,11 +5,11 @@ from typing import List, Tuple, Optional, Dict, Any
 import os
 import heapq
 
-# === KLASA ParkClassifier (Odpowiedzialna za Klasyfikację i Analizę) ===
+# === ParkClassifier Class (Responsible for Classification and Analysis) ===
 class ParkClassifier:
     """
     Generic parking space classifier using digital image processing.
-    Odpowiedzialność: Klasyfikacja miejsc, przetwarzanie obrazu, algorytm A* i rysowanie wyników.
+    Responsibilities: Space classification, image processing, A* algorithm and result drawing.
     """
     
     def __init__(self, 
@@ -18,12 +18,12 @@ class ParkClassifier:
                  rect_height: int = 48,
                  processing_params: dict = None):
         
-        # Wymiary są teraz tylko do odczytu (używane w kompatybilności wstecznej/obliczeniach)
+        # Dimensions are now read-only (used in backward compatibility/calculations)
         self.rect_height = rect_height
         self.rect_width = rect_width 
         self.car_park_positions_path = car_park_positions_path
 
-        # Wczytanie pozycji
+        # Load positions
         self.car_park_positions, self.route_points = self._read_positions(car_park_positions_path)
         
         # Set default processing parameters
@@ -49,11 +49,11 @@ class ParkClassifier:
                 data = pickle.load(f)
 
                 if isinstance(data, list):
-                    # Stary format (tylko lista pozycji) - obsługa kompatybilności wstecznej
+                    # Old format (positions list only) - backward compatibility
                     print("Warning: Loaded old position format (list). Using default dimensions.")
                     return data, []
                 else:
-                    # Nowy format (słownik)
+                    # New format (dictionary)
                     return data.get('car_park_positions', []), data.get('route_points', [])
 
         except Exception as e:
@@ -107,7 +107,7 @@ class ParkClassifier:
             occupied_spaces = 0
             space_details = []
 
-            # --- SORTOWANIE WEDŁUG NUMERYCZNEGO ID ---
+            # --- SORTING BY NUMERIC ID ---
             sorted_positions = self.car_park_positions.copy()
             def sort_key(pos):
                 raw_id = pos.get('id', '99999') 
@@ -117,14 +117,14 @@ class ParkClassifier:
                     return 99999 
 
             sorted_positions.sort(key=sort_key)
-            # --- KONIEC SORTOWANIA ---
+            # --- END OF SORTING ---
 
             for pos in sorted_positions: 
                 
                 spot_id_raw = pos.get('id')
                 spot_id = str(spot_id_raw) if spot_id_raw is not None else '?'
                 
-                # Użycie nowego formatu (dict)
+                # Using new format (dict)
                 if isinstance(pos, dict):
                     points = pos['points']
                     is_irregular = pos.get('irregular', False)
@@ -146,7 +146,7 @@ class ParkClassifier:
                     count = cv2.countNonZero(crop)
                     
                 else:
-                    # Stary format (dla kompatybilności wstecznej)
+                    # Old format (for backward compatibility)
                     x, y = pos
                     points = [(x, y), 
                             (x + self.rect_width, y), 
@@ -213,7 +213,7 @@ class ParkClassifier:
             
             return image, stats
             
-    # Funkcje Rysujące (rysują wyniki analizy) 
+    # Drawing Functions (display analysis results)
     def _draw_info_panel(self, image: np.ndarray, empty_spaces: int, total_spaces: int):
         """Draw information panel on image"""
         cv2.rectangle(image, (45, 30), (300, 85), (180, 0, 180), -1)
@@ -238,7 +238,7 @@ class ParkClassifier:
         cv2.line(img, p2, pt2, color, 3)
         
     def _draw_pathfinding_route(self, image: np.ndarray, target_space: dict, occupied_spaces: List[dict]):
-        """Wyznacza i rysuje trasę A* do celu."""
+        """Determines and draws A* route to the target."""
         
         start_node = self.route_points[0]
         points = target_space['points']
@@ -265,9 +265,9 @@ class ParkClassifier:
             cv2.putText(image, "DOJAZD", (target_center[0] - 30, target_center[1] + 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
         # else:
-            # print("Nie znaleziono bezpiecznej trasy do miejsca docelowego.") # Wyłączone, aby nie spamować konsoli
+            # print("No safe route found to target location.") # Disabled to avoid console spam
             
-    # --- Funkcje Pathfinding (A*) ---
+    # --- Pathfinding Functions (A*) ---
     def _get_nearest_route_node(self, target_point: Tuple[int, int]) -> Optional[Tuple[int, int]]:
         """Find the nearest route point to the target point"""
         if not self.route_points:
@@ -329,4 +329,4 @@ class ParkClassifier:
                     return True
         return False
 
-#  Usunięto metodę _draw_route_to_space i inne, które były dublowane przez _draw_pathfinding_route
+# Removed _draw_route_to_space method and others that were duplicated by _draw_pathfinding_route

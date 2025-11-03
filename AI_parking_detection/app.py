@@ -11,7 +11,7 @@ import subprocess
 def get_direct_youtube_url(youtube_url: str) -> str:
         """Uses yt-dlp to extract the direct stream URL for a YouTube video."""
         try:
-            # Polecenie yt-dlp do uzyskania bezpośredniego URL strumienia o najlepszej jakości wideo
+            # Use yt-dlp to get direct stream URL with best video quality
             command = [
                 'yt-dlp',
                 '--get-url',
@@ -19,19 +19,19 @@ def get_direct_youtube_url(youtube_url: str) -> str:
                 youtube_url
             ]
             
-            # Wykonaj polecenie i przechwyć wynik (URL)
+            # Execute command and capture result (URL)
             direct_url = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL).strip()
             
             if direct_url.startswith('http'):
-                print("✅ Wykryto link YouTube. Pomyślnie uzyskano bezpośredni URL strumienia.")
+                print("✅ YouTube link detected. Successfully obtained direct stream URL.")
                 return direct_url
                 
         except FileNotFoundError:
-            print("❌ Błąd: Nie znaleziono polecenia 'yt-dlp'. Upewnij się, że jest zainstalowane.")
+            print("❌ Error: Command 'yt-dlp' not found. Make sure it is installed.")
         except Exception as e:
-            print(f"❌ Błąd podczas wyodrębniania URL z YouTube: {e}")
+            print(f"❌ Error extracting URL from YouTube: {e}")
             
-        return youtube_url # Zwróć oryginalny URL jako fallback
+        return youtube_url # Return original URL as fallback
 
 class ParkingMonitor:
     """Generic parking monitoring application"""
@@ -74,47 +74,47 @@ class ParkingMonitor:
         self.classifier.processing_params = self.processing_params
 
     def _scale_frame(self, frame: np.ndarray, scale_percent: int) -> np.ndarray:
-        """Pomocnicza funkcja skalująca obraz."""
+        """Helper function for scaling the image."""
         if scale_percent == 100 or scale_percent <= 0:
             return frame
         
         width = int(frame.shape[1] * scale_percent / 100)
         height = int(frame.shape[0] * scale_percent / 100)
         dim = (width, height)
-        # Używamy INTER_AREA dla zmniejszania (lepsza jakość)
+        # Use INTER_AREA for downscaling (better quality)
         return cv2.resize(frame, dim, interpolation=cv2.INTER_AREA)
 
-    # USUNIĘTO: Funkcję _scale_positions, ponieważ cała analiza dzieje się na oryginalnej rozdzielczości
+    # REMOVED: _scale_positions function, as all analysis happens on original resolution
 
     def monitor_video(self, video_source: str = None, output_path: str = None, scale_percent: int = 100):
         """Monitor parking from video source"""
         if video_source is None:
             video_source = self.lot_config["video_source"]
         
-        # 💡 NOWA LOGIKA: Sprawdź i uzyskaj bezpośredni URL z YouTube
+        # 💡 NEW LOGIC: Check and get direct URL from YouTube
         final_video_source = video_source
         if "youtube.com" in video_source or "youtu.be" in video_source:
-             final_video_source = get_direct_youtube_url(video_source) # <-- Użycie yt-dlp
+             final_video_source = get_direct_youtube_url(video_source) # <-- Using yt-dlp
 
-        # KLUCZOWA ZMIANA: Próbujemy użyć back-endu FFMPEG
+        # KEY CHANGE: Try using FFMPEG backend
         cap = cv2.VideoCapture(final_video_source, cv2.CAP_FFMPEG)
         if not cap.isOpened():
             print(f"Warning: Could not open video source/IP stream using FFMPEG. Trying default backend...")
             
-            # Próba z domyślnym back-endem 
-            cap = cv2.VideoCapture(final_video_source) # <-- Używamy final_video_source
+            # Try with default backend
+            cap = cv2.VideoCapture(final_video_source) # <-- Using final_video_source
             
             if not cap.isOpened():
                 print(f"Error: Could not open video source/IP stream: {final_video_source}")
                 return
         
-        # Writer musi być skonfigurowany dla SKALOWANEGO obrazu wyjściowego
+        # Writer must be configured for SCALED output image
         writer = None
         if output_path:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             fps = cap.get(cv2.CAP_PROP_FPS)
             
-            # Wymiary dla Writer są skalowane
+            # Writer dimensions are scaled
             width_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             
@@ -135,15 +135,15 @@ class ParkingMonitor:
                     break
                 frame_count += 1
             
-            # KLUCZOWA ZMIANA: Przetwarzanie odbywa się na ORYGINALNEJ, dużej ramce 'frame'
+            # KEY CHANGE: Processing is done on the ORIGINAL, large 'frame'
             processed_frame = self.classifier.implement_process(frame)
             annotated_frame, stats = self.classifier.classify(
-                image=frame.copy(), # Używamy oryginalnej ramki do rysowania
-                processed_image=processed_frame, # Używamy oryginalnie przetworzonej ramki
+                image=frame.copy(),  # Using original frame for drawing
+                processed_image=processed_frame,  # Using originally processed frame
                 threshold=self.lot_config["threshold"]
             )
             
-            # SKALOWANIE TYLKO DO WYŚWIETLANIA
+            # Scale only for display/output
             display_frame = self._scale_frame(annotated_frame, scale_percent)
 
             cv2.putText(display_frame, f"Frame: {frame_count}", 
@@ -174,7 +174,7 @@ class ParkingMonitor:
                 paused = not paused
                 print("Paused" if paused else "Resumed")
             elif key == ord(' ') and paused:
-                # Jeśli wstrzymano i krok, czytamy nową ramkę i kontynuujemy z nią
+                # IF paused and step, read a new frame and continue with it
                 ret, frame_step = cap.read() 
                 if ret:
                     frame = frame_step 
@@ -203,7 +203,7 @@ class ParkingMonitor:
             threshold=self.lot_config["threshold"]
         )
         
-        # SKALOWANIE TYLKO DO WYŚWIETLANIA
+        # Scale only for display/output
         display_image = self._scale_frame(annotated_image, scale_percent)
         
         print("\nParking Statistics:")
@@ -227,7 +227,7 @@ def main():
     
     # ARGUMENT DLA SKALOWANIA
     parser.add_argument('--scale_percent', type=int, default=100, 
-                        help='Skalowanie wyjściowego obrazu/wideo w procentach (np. 50 dla 50% rozmiaru).')
+                        help='Scale output image/video in percent (e.g., 50 for 50% size).')
 
     # Image processing overrides
     parser.add_argument('--blur_kernel', type=int, nargs=2, help='Gaussian blur kernel size, e.g., 3 3')

@@ -9,13 +9,13 @@ import json
 
 CALIBRATION_OUTPUT_FILE = "config/temp_calibration_data.json"
 
-# === KLASA CoordinateDenoter (Odpowiedzialna za Adnotację i Konfigurację) ===
+# === CoordinateDenoter Class (Responsible for Annotation and Configuration) ===
 class CoordinateDenoter:
     """
     Generic coordinate annotation tool with rectangular and irregular modes.
-    Odpowiedzialność: Zarządzanie pozycjami parkingowymi i punktami trasy (CRUD), 
-    obsługa interfejsu użytkownika (mysz, klawiatura, rysowanie tymczasowe), 
-    oraz zapis wyników kalibracji.
+    Responsibilities: Managing parking positions and route points (CRUD),
+    handling user interface (mouse, keyboard, temporary drawing),
+    and saving calibration results.
     """
     
     def __init__(self, 
@@ -42,7 +42,7 @@ class CoordinateDenoter:
         os.makedirs(os.path.dirname(car_park_positions_path), exist_ok=True)
       
     def _save_calibration_results(self, width: int, height: int):
-        """Zapisuje tymczasowe wyniki kalibracji do pliku JSON."""
+        """Saves temporary calibration results to JSON file."""
         data = {
             "rect_width": width,
             "rect_height": height
@@ -51,13 +51,13 @@ class CoordinateDenoter:
         try:
             with open(CALIBRATION_OUTPUT_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-            print(f"✅ Wyniki kalibracji automatycznie zapisane do {CALIBRATION_OUTPUT_FILE}")
+            print(f"✅ Calibration results automatically saved to {CALIBRATION_OUTPUT_FILE}")
         except Exception as e:
-            print(f"❌ Błąd zapisu wyników kalibracji: {e}")
+            print(f"❌ Error saving calibration results: {e}")
             
-    # --- Zarządzanie Stanem i Plikami ---
+    # --- Managing  ---
     def _get_next_id(self) -> int:
-        """Generuje następny unikalny ID numeryczny, uwzględniając luki."""
+        """Generates the next unique numeric ID, considering gaps."""
         if not self.car_park_positions: return 1
             
         existing_int_ids = set()
@@ -125,7 +125,7 @@ class CoordinateDenoter:
         
     def _convert_old_format(self):
         """Convert old formats to new dict format and ensure 'id' exists."""
-        # Logika konwersji jest niezbędna, aby zapewnić spójność po podziale
+        # Conversion logic is necessary to ensure consistency after splitting
         converted = []
         next_id = 1
         
@@ -185,12 +185,12 @@ class CoordinateDenoter:
         except Exception as e:
             print(f"Error saving positions: {e}")
             
-    # --- Obsługa Interfejsu (Mysz/Klawiatura/Rysowanie) ---
+    # --- Interface Handling (Mouse/Keyboard/Drawing) ---
     def _handle_text_input(self, key_code: int):
         """Handles keyboard input when in ID editing state."""
         char = chr(key_code)
         
-        if key_code == 13: # Enter key (zatwierdzenie)
+        if key_code == 13: # Enter key (confirmation)
             if self.input_buffer:
                 new_id_str = self.input_buffer.strip()
                 current_spot_index = self.edit_target_index
@@ -202,14 +202,14 @@ class CoordinateDenoter:
                         break
                         
                 if existing_spot_index != -1:
-                    # Zamiana ID
+                    # ID Swap
                     old_id_of_current_spot = str(self.car_park_positions[current_spot_index]['id'])
                     self.car_park_positions[existing_spot_index]['id'] = old_id_of_current_spot
                     self.car_park_positions[current_spot_index]['id'] = new_id_str
                     print(f"SUCCESS: Swapped ID '{new_id_str}' with ID '{old_id_of_current_spot}'.")
                     
                 else:
-                    # Ustawienie nowego ID
+                    # Set new ID
                     self.car_park_positions[current_spot_index]['id'] = new_id_str
                     print(f"SUCCESS: ID updated to '{new_id_str}'.")
 
@@ -217,7 +217,7 @@ class CoordinateDenoter:
             else:
                 print("ID change cancelled - input was cleared.")
             
-            # Zakończ edycję
+            # End editing
             self.is_editing_id = False
             self.input_buffer = ""
             self.edit_target_index = -1
@@ -294,7 +294,7 @@ class CoordinateDenoter:
                 else:
                     print("No spot found at clicked location.")
             
-            elif self.mode == 'c': # <= TRYB KALIBRACJI
+            elif self.mode == 'c': # <= CALIBRATION MODE
                 self.irregular_points.append((x, y))
                 print(f"Calibration Point {len(self.irregular_points)} added: ({x}, {y})")
 
@@ -304,19 +304,19 @@ class CoordinateDenoter:
                     width = abs(x2 - x1)
                     height = abs(y2 - y1)
 
-                    print("\n=== WYNIK KALIBRACJI Wymiarów ===")
-                    print(f"Szerokość (px): {width}")
-                    print(f"Wysokość (px): {height}")
-                    print("===================================")
+                    print("\n=== CALIBRATION RESULTS ===")
+                    print(f"Width (px): {width}")
+                    print(f"Height (px): {height}")
+                    print("=========================")
                     
-                    # ZAPIS WYNIKÓW DO PLIKU TYMCZASOWEGO
+                    # SAVE RESULTS TO TEMPORARY FILE
                     self._save_calibration_results(width, height) 
                     
                     self.irregular_points = []
-                    #self.set_mode('p') # Powrót do domyślnego trybu
+                    #self.set_mode('p') # Return to default mode
                     
         elif events == cv2.EVENT_RBUTTONDOWN:
-            # Usuwanie pozycji
+            # Remove position
             for index, pos in enumerate(self.car_park_positions):
                 points = pos['points']
                 pts = np.array(points, dtype=np.int32)
@@ -344,7 +344,7 @@ class CoordinateDenoter:
         """Draw all positions on image, including temporary points and text input box if active."""
         display_image = image.copy()
         
-        # 1. Rysowanie istniejących pozycji
+        # 1. Drawing existing positions
         for i, pos in enumerate(self.car_park_positions):
             points = pos['points']
             is_irregular = pos.get('irregular', False)
@@ -364,7 +364,7 @@ class CoordinateDenoter:
             cv2.putText(display_image, spot_id, (center_x - 10, center_y), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
         
-        # 2. Rysowanie symulowanego pola tekstowego (Edit ID)
+        # 2. Drawing simulated text field (Edit ID)
         if self.is_editing_id:
             points = self.car_park_positions[self.edit_target_index]['points']
             center_x = sum(p[0] for p in points) // len(points)
@@ -389,19 +389,19 @@ class CoordinateDenoter:
         if (self.mode == 'i' or self.mode == 'c') and self.irregular_points:
             color = (0, 255, 255)
             if self.mode == 'c' and len(self.irregular_points) == 1:
-                color = (0, 255, 0) # Pierwszy punkt kalibracji na zielono
+                color = (0, 255, 0) # First calibration point in green
 
             for idx, point in enumerate(self.irregular_points):
                 cv2.circle(display_image, point, 5, color, -1)
                 
-                # Rysowanie linii połączeniowej w trybie 'c' (kalibracja)
+                # Drawing connecting line in 'c' mode (calibration)
                 if self.mode == 'c' and len(self.irregular_points) == 2:
                     (x1, y1), (x2, y2) = self.irregular_points
                     
-                    # Rysowanie prostokąta kalibracyjnego
+                    # Drawing calibration rectangle
                     cv2.rectangle(display_image, (x1, y1), (x2, y2), (255, 255, 0), 2) 
 
-            # Rysowanie etykiet/punktów w trybie 'i'
+                # Drawing labels/points in mode 'i'
             if self.mode == 'i':
                 for idx, point in enumerate(self.irregular_points):
                     cv2.putText(display_image, str(idx + 1), 

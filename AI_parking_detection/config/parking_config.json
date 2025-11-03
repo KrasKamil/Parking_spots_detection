@@ -89,6 +89,15 @@
       "positions_file": "data/parking_lots/japan_positions",
       "source_image": "data/source/img/japan.png",
       "video_source": "https://www.youtube.com/watch?v=_1PfF1v9GJc"
+    },
+    "birmington_resort": {
+      "name": "Birmington Resort",
+      "rect_width": 72,
+      "rect_height": 83,
+      "threshold": 900,
+      "positions_file": "data/parking_lots/birmington_resort_positions",
+      "source_image": "data\\source\\img\\Birmington_resort.png",
+      "video_source": "https://www.youtube.com/watch?v=4a-3iEM7bHk"
     }
   },
   "processing_params": {

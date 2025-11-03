@@ -1,12 +1,13 @@
 import json
 import os
+import argparse
 
 CONFIG_FILE = "config/parking_config.json"
 CALIBRATION_OUTPUT_FILE = "config/temp_calibration_data.json" 
 TEMP_LOT_FILE = "config/temp_last_lot.json"
 
 def load_or_create_config():
-    """Wczytuje istniejący plik konfiguracyjny lub tworzy nowy z domyślną strukturą."""
+    """Loads existing configuration file or creates a new one with default structure."""
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
@@ -47,13 +48,13 @@ def save_last_lot_name(lot_name: str):
         os.makedirs(os.path.dirname(TEMP_LOT_FILE), exist_ok=True)
         with open(TEMP_LOT_FILE, 'w') as f:
             json.dump({"lot_name": lot_name}, f)
-        print(f"✅ Nazwa parkingu '{lot_name}' zapisana tymczasowo.")
+        print(f"✅ Parking lot name '{lot_name}' saved temporarily.")
     except Exception as e:
-        print(f"❌ Błąd zapisu nazwy parkingu: {e}")
+        print(f"❌ Error saving parking lot name: {e}")
 
 
 def create_parking_lot(config, name, rect_width, rect_height, threshold, image_path, video_path):
-    """Dodaje nową konfigurację parkingu do config.json"""
+    """Adds a new parking lot configuration to config.json"""
     positions_file = f"data/parking_lots/{name}_positions"
     
     new_lot = {
@@ -71,41 +72,57 @@ def create_parking_lot(config, name, rect_width, rect_height, threshold, image_p
     save_config(config)
     save_last_lot_name(name)
     
-    print(f"\n✅ Dodano konfigurację '{name}'!")
-    print(f"📁 Plik pozycji: {positions_file}")
-    print(f"🖼️  Obraz: {new_lot['source_image']}")
-    print(f"🎥  Wideo: {new_lot['video_source']}")
-    print(f"\n📋 Następne kroki:")
-    print(f"1. Oznacz miejsca parkingowe:")
+    print(f"\n✅ Added configuration '{name}'!")
+    print(f"📁 Positions file: {positions_file}")
+    print(f"🖼️  Image: {new_lot['source_image']}")
+    print(f"🎥  Video: {new_lot['video_source']}")
+    print(f"\n📋 Next steps:")
+    print(f"1. Mark parking spaces:")
     print(f"   python car_park_coordinate_generator.py --lot {name}")
-    print(f"2. Uruchom monitoring:")
+    print(f"2. Start monitoring:")
     print(f"   python app.py --lot {name}")
 
 def read_and_clean_calibration_data():
-    """Odczytuje tymczasowe dane kalibracji i usuwa plik."""
+    """Reads temporary calibration data and removes the file."""
     if os.path.exists(CALIBRATION_OUTPUT_FILE):
         try:
             with open(CALIBRATION_OUTPUT_FILE, 'r') as f:
                 data = json.load(f)
-            os.remove(CALIBRATION_OUTPUT_FILE) # Usuwamy plik, aby nie używać starych danych
-            print(f"✅ Automatycznie wczytano wymiary z kalibracji: W={data.get('rect_width')}, H={data.get('rect_height')}")
+            os.remove(CALIBRATION_OUTPUT_FILE)  # Remove file to avoid using old data
+            print(f"✅ Successfully loaded calibration dimensions: W={data.get('rect_width')}, H={data.get('rect_height')}")
             return data.get('rect_width'), data.get('rect_height')
         except Exception as e:
-            print(f"❌ Błąd odczytu/usuwania pliku kalibracji: {e}")
+            print(f"❌ Error reading/removing calibration file: {e}")
             return None, None
     return None, None
 
 
 def interactive_mode():
-    """Uruchamia tryb interaktywny (z pytaniami w konsoli)."""
-    config = load_or_create_config()
-    print("Dostępne konfiguracje parkingów:")
-    for n in config["parking_lots"].keys():
-        print(f"  - {n}")
-
-    print("\n=== Dodawanie nowej konfiguracji parkingu ===")
+    """Runs interactive mode (with console prompts)."""
     
-    # === AUTOMATYCZNE POBIERANIE DANYCH KALIBRACJI ===
+    # === 1.Parsing arguments from main.py ===
+    parser = argparse.ArgumentParser(description='Interactive Parking Configuration Adder')
+    parser.add_argument('--default_name', type=str, default='',
+                        help='Default lot name derived from the selected image file.')
+    parser.add_argument('--image_path', type=str, default='',
+                        help='Path to the selected image file, used as default.')
+    args = parser.parse_args()
+    
+    # Use and clean passed arguments
+    initial_lot_name = args.default_name.lower().replace('.', '_').replace(' ', '_')
+    initial_image_path = args.image_path
+    # ==========================================
+    
+    config = load_or_create_config()
+    print("Available parking lot configurations:")
+    for n in config["parking_lots"].keys():
+        # Filter 'default' from displayed list
+        if n != 'default': 
+            print(f"  - {n}")
+
+    print("\n=== Adding New Parking Lot Configuration ===")
+    
+    # === AUTOMATIC CALIBRATION DATA RETRIEVAL ===
     default_width = 107
     default_height = 48
     
@@ -115,34 +132,52 @@ def interactive_mode():
         default_width = calibrated_width
         default_height = calibrated_height
     
-    print(f"--- Wymiary do wprowadzenia (domyślnie: {default_width}x{default_height}px) ---")
+    print(f"--- Dimensions to enter (default: {default_width}x{default_height}px) ---")
     # =========================================
     
-    lot_name = input("Podaj nazwę nowego parkingu (np. 'mall_parking'): ").strip()
+    # === 2. USE DEFAULT NAME (lot_name) ===
+    # Use default name passed from main.py if it exists
+    lot_name_prompt = f"Enter the new parking lot name (default '{initial_lot_name}'): " if initial_lot_name else "Enter the new parking lot name (e.g. 'mall_parking'): "
+    
+    lot_name = input(lot_name_prompt).strip()
+    if not lot_name:
+        lot_name = initial_lot_name # Use default name if user pressed Enter
+
+    if not lot_name: # If still empty, ask again
+        print("Parking lot name cannot be empty.")
+        return 
 
     if lot_name in config["parking_lots"]:
-        overwrite = input(f"Konfiguracja '{lot_name}' już istnieje. Nadpisać? (y/n): ").strip().lower()
+        overwrite = input(f"Configuration '{lot_name}' already exists. Overwrite? (y/n): ").strip().lower()
         if overwrite != 'y':
-            print("Anulowano.")
+            print("Cancelled.")
             return
 
-    display_name = input(f"Podaj wyświetlaną nazwę (domyślnie '{lot_name.replace('_', ' ').title()}'): ").strip()
+    # Use lot_name as default display name
+    display_name = input(f"Enter display name (default '{lot_name.replace('_', ' ').title()}'): ").strip()
     if not display_name:
         display_name = lot_name.replace('_', ' ').title()
 
     try:
-        rect_width = int(input(f"Szerokość prostokąta miejsca parkingowego (domyślnie {default_width}): ") or str(default_width))
-        rect_height = int(input(f"Wysokość prostokąta miejsca parkingowego (domyślnie {default_height}): ") or str(default_height))
-        threshold = int(input("Próg klasyfikacji (domyślnie 900): ") or "900")
+        rect_width = int(input(f"Parking space rectangle width (default {default_width}): ") or str(default_width))
+        rect_height = int(input(f"Parking space rectangle height (default {default_height}): ") or str(default_height))
+        threshold = int(input("Classification threshold (default 900): ") or "900")
     except ValueError:
-        print("Błędne wartości liczbowe. Używam domyślnych.")
+        print("Invalid numeric values. Using defaults.")
         rect_width, rect_height, threshold = default_width, default_height, 900
+        
+    # === 3. Use default image path ===
 
-    image_path = 'data/source/img/'+input("Ścieżka do obrazu referencyjnego:(w folderze data/source/img) e.g plik.png ").strip()
+    image_path_prompt = f"Path to reference image (default '{initial_image_path}'): " if initial_image_path else "Path to reference image: "
     
-    video_path = input("Ścieżka do wideo (plik) lub URL kamery IP (np. rtsp://user:pass@ip:port/stream): ").strip()
+    input_image_path = input(image_path_prompt).strip()
+    if not input_image_path:
+        input_image_path = initial_image_path
+        
+    video_path = input("Path to video file or IP camera URL (e.g. rtsp://user:pass@ip:port/stream): ").strip()
 
-    create_parking_lot(config, lot_name, rect_width, rect_height, threshold, image_path, video_path)
+    # Call with valid and enriched data
+    create_parking_lot(config, lot_name, rect_width, rect_height, threshold, input_image_path, video_path)
 
 
 if __name__ == "__main__":
