@@ -1,7 +1,13 @@
-# Plik requirements.txt
-# Main dependencies for the AI parking detection project
-numpy==2.3.4
-opencv_contrib_python==4.6.0.66
-opencv_python==4.12.0.88
-#Youtube support
-yt-dlp==2025.10.22
+# Plik: requirements.txt
+#
+# WAŻNE: Do instalacji tych pakietów wymagany jest zaktualizowany pip.
+# Uruchom: python -m pip install --upgrade pip
+# -----------------------------------------------------------------
+
+# Główne zależności projektu
+numpy
+opencv-contrib-python
+opencv-python
+
+# Wsparcie dla YouTube
+yt-dlp
