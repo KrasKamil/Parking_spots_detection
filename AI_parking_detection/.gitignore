@@ -2,3 +2,4 @@
 src/__pycache__/
 config/temp_calibration_data.json
 config/temp_last_lot.json
+README.md
