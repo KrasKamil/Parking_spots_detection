@@ -21,7 +21,7 @@ class CoordinateDenoter:
     def __init__(self, 
                  rect_width: int = 107, 
                  rect_height: int = 48, 
-                 car_park_positions_path: str = "data/CarParkPos"):
+                 car_park_positions_path: str = "data/parking_lots/default_positions"):
         
         self.rect_width = rect_width
         self.rect_height = rect_height

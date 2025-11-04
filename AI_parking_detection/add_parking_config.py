@@ -19,9 +19,18 @@ def load_or_create_config():
                     "rect_width": 107,
                     "rect_height": 48,
                     "threshold": 900,
-                    "positions_file": "data/CarParkPos",
+                    "positions_file": "data/parking_lots/default_positions",
                     "source_image": "data/source/example_image.png",
                     "video_source": "data/source/carPark.mp4"
+                },
+                "empty_calibration": { 
+                    "name": "Calibration Temporary",
+                    "rect_width": 1, 
+                    "rect_height": 1,
+                    "threshold": 1,
+                    "positions_file": "config/temp_calibration_positions",
+                    "source_image": "data/source/example_image.png", 
+                    "video_source": ""
                 }
             },
             "processing_params": {

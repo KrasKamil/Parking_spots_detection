@@ -28,7 +28,7 @@ class ConfigManager:
                     "rect_width": 107,
                     "rect_height": 48,
                     "threshold": 900,
-                    "positions_file": "data/CarParkPos",
+                    "positions_file": "data/parking_lots/default_positions",
                     "source_image": "data/source/example_image.png",
                     "video_source": "data/source/carPark.mp4"
                 }

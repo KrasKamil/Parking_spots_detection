@@ -1,119 +1,128 @@
 {
-  "parking_lots": {
-    "default": {
-      "name": "Default Parking Lot",
-      "rect_width": 1,
-      "rect_height": 1,
-      "threshold": 1000,
-      "positions_file": "data/parking_lots/CarParkPos",
-      "source_image": "data/source/img/example.png",
-      "video_source": "data/source/video/carPark.mp4"
+    "parking_lots": {
+        "default": {
+            "name": "Default",
+            "rect_width": 110,
+            "rect_height": 46,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/default_positions",
+            "source_image": "data\\source\\img\\example.png",
+            "video_source": "data/source/video/carPark.mp4"
+        },
+        "empty_calibration": {
+            "name": "Calibration Temporary",
+            "rect_width": 1,
+            "rect_height": 1,
+            "threshold": 1,
+            "positions_file": "config/temp_calibration_positions",
+            "source_image": "data/source/example_image.png",
+            "video_source": ""
+        },
+        "blok": {
+            "name": "Blok",
+            "rect_width": 87,
+            "rect_height": 200,
+            "threshold": 700,
+            "positions_file": "data/parking_lots/blok_positions",
+            "source_image": "data/source/img/blok.png",
+            "video_source": "data/source/video/output1.mp4"
+        },
+        "blok_2": {
+            "name": "Blok 2",
+            "rect_width": 87,
+            "rect_height": 200,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/blok_2_positions",
+            "source_image": "data/source/img/blok_2.png",
+            "video_source": "data/source/video/blok_2.mp4"
+        },
+        "blok_3": {
+            "name": "Blok 3",
+            "rect_width": 68,
+            "rect_height": 131,
+            "threshold": 1400,
+            "positions_file": "data/parking_lots/blok_3_positions",
+            "source_image": "data/source/img/blok_3.png",
+            "video_source": "data/source/video/blok_3.mp4"
+        },
+        "blok_wet": {
+            "name": "Blok Wet",
+            "rect_width": 80,
+            "rect_height": 160,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/blok_wet_positions",
+            "source_image": "data/source/img/blok_wet.png",
+            "video_source": "data/source/video/blok_wet.mp4"
+        },
+        "blok_4": {
+            "name": "Blok 4",
+            "rect_width": 91,
+            "rect_height": 190,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/blok_4_positions",
+            "source_image": "data/source/img/blok_4.png",
+            "video_source": "data/source/video/blok_4.mp4"
+        },
+        "blok_5": {
+            "name": "Blok 5",
+            "rect_width": 80,
+            "rect_height": 165,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/blok_5_positions",
+            "source_image": "data/source/img/blok_5.png",
+            "video_source": "data/source/video/blok_5.mp4"
+        },
+        "Dobrowa_Gornicza": {
+            "name": "Dobrowa Gornicza",
+            "rect_width": 262,
+            "rect_height": 41,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/Dobrowa_Gornicza_positions",
+            "source_image": "data/source/img/dabrowa_gornicza.png",
+            "video_source": "https://www.youtube.com/watch?v=bmgJgTEjhtc"
+        },
+        "japan": {
+            "name": "Japan",
+            "rect_width": 72,
+            "rect_height": 89,
+            "threshold": 1200,
+            "positions_file": "data/parking_lots/japan_positions",
+            "source_image": "data/source/img/japan.png",
+            "video_source": "https://www.youtube.com/watch?v=_1PfF1v9GJc"
+        },
+        "resort": {
+            "name": "Birmington Resort",
+            "rect_width": 72,
+            "rect_height": 83,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/birmington_resort_positions",
+            "source_image": "data\\source\\img\\resort.png",
+            "video_source": "https://www.youtube.com/watch?v=4a-3iEM7bHk"
+        },
+        "korea": {
+            "name": "Korea",
+            "rect_width": 422,
+            "rect_height": 130,
+            "threshold": 1000,
+            "positions_file": "data/parking_lots/korea_positions",
+            "source_image": "data\\source\\img\\korea_20251104_094927.png",
+            "video_source": "https://www.youtube.com/watch?v=_6tMEKrOU2Q"
+        }
     },
-    "Demo": {
-      "name": "Demo Lot",
-      "rect_width": 107,
-      "rect_height": 48,
-      "threshold": 900,
-      "positions_file": "data/CarParkPos",
-      "source_image": "data/source/img/example.png",
-      "video_source": "data/source/video/carPark.mp4"
-    },
-    "blok": {
-      "name": "Blok",
-      "rect_width": 87,
-      "rect_height": 200,
-      "threshold": 1250,
-      "positions_file": "data/parking_lots/blok_positions",
-      "source_image": "data/source/img/blok.png",
-      "video_source": "data/source/video/output1.mp4"
-    },
-    "blok_2": {
-      "name": "Blok 2",
-      "rect_width": 87,
-      "rect_height": 200,
-      "threshold": 900,
-      "positions_file": "data/parking_lots/blok_2_positions",
-      "source_image": "data/source/img/blok_2.png",
-      "video_source": "data/source/video/blok_2.mp4"
-    },
-    "blok_3": {
-      "name": "Blok 3",
-      "rect_width": 68,
-      "rect_height": 131,
-      "threshold": 1400,
-      "positions_file": "data/parking_lots/blok_3_positions",
-      "source_image": "data/source/img/blok_3.png",
-      "video_source": "data/source/video/blok_3.mp4"
-    },
-    "blok_wet": {
-      "name": "Blok Wet",
-      "rect_width": 80,
-      "rect_height": 160,
-      "threshold": 1000,
-      "positions_file": "data/parking_lots/blok_wet_positions",
-      "source_image": "data/source/img/blok_wet.png",
-      "video_source": "data/source/video/blok_wet.mp4"
-    },
-    "blok_4": {
-      "name": "Blok 4",
-      "rect_width": 91,
-      "rect_height": 190,
-      "threshold": 900,
-      "positions_file": "data/parking_lots/blok_4_positions",
-      "source_image": "data/source/img/blok_4.png",
-      "video_source": "data/source/video/blok_4.mp4"
-    },
-    "blok_5": {
-      "name": "Blok 5",
-      "rect_width": 80,
-      "rect_height": 165,
-      "threshold": 1000,
-      "positions_file": "data/parking_lots/blok_5_positions",
-      "source_image": "data/source/img/blok_5.png",
-      "video_source": "data/source/video/blok_5.mp4"
-    },
-    "Dobrowa_Gornicza": {
-      "name": "Dobrowa Gornicza",
-      "rect_width": 262,
-      "rect_height": 41,
-      "threshold": 900,
-      "positions_file": "data/parking_lots/Dobrowa_Gornicza_positions",
-      "source_image": "data/source/img/dabrowa_gornicza.png",
-      "video_source": "https://www.youtube.com/watch?v=bmgJgTEjhtc"
-    },
-    "japan": {
-      "name": "Japan",
-      "rect_width": 72,
-      "rect_height": 89,
-      "threshold": 1000,
-      "positions_file": "data/parking_lots/japan_positions",
-      "source_image": "data/source/img/japan.png",
-      "video_source": "https://www.youtube.com/watch?v=_1PfF1v9GJc"
-    },
-    "birmington_resort": {
-      "name": "Birmington Resort",
-      "rect_width": 72,
-      "rect_height": 83,
-      "threshold": 900,
-      "positions_file": "data/parking_lots/birmington_resort_positions",
-      "source_image": "data\\source\\img\\Birmington_resort.png",
-      "video_source": "https://www.youtube.com/watch?v=4a-3iEM7bHk"
+    "processing_params": {
+        "gaussian_blur_kernel": [
+            3,
+            3
+        ],
+        "gaussian_blur_sigma": 1,
+        "adaptive_threshold_max_value": 255,
+        "adaptive_threshold_block_size": 25,
+        "adaptive_threshold_c": 16,
+        "median_blur_kernel": 5,
+        "dilate_kernel_size": [
+            3,
+            3
+        ],
+        "dilate_iterations": 1
     }
-  },
-  "processing_params": {
-    "gaussian_blur_kernel": [
-      3,
-      3
-    ],
-    "gaussian_blur_sigma": 1,
-    "adaptive_threshold_max_value": 255,
-    "adaptive_threshold_block_size": 25,
-    "adaptive_threshold_c": 16,
-    "median_blur_kernel": 5,
-    "dilate_kernel_size": [
-      3,
-      3
-    ],
-    "dilate_iterations": 1
-  }
 }
