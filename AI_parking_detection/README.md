@@ -15,7 +15,7 @@ A flexible parking space detection system using computer vision to monitor parki
 Here is an example of the system in action, identifying empty (green) and occupied (red) spaces, and calculating the A\* route (blue line) to the nearest free spot.
 
 <p align="center">
-<img src="AI_parking_detection/data/results/parking_snapshot_20251023_135934.jpg">
+<img src="data/results/parking_snapshot_20251023_135934.jpg">
 
 ## 🎯 Problem Definition & Solution
 
