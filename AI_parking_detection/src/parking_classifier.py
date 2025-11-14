@@ -38,6 +38,30 @@ class ParkClassifier:
             "dilate_iterations": 1
         }
         
+        # -----------------------------------------------------------------
+        # === NOWA LOGIKA: BUFOR STABILIZACYJNY (ANTI-FLICKER) ===
+        # -----------------------------------------------------------------
+        
+        # Definiuje, przez ile kolejnych klatek stan musi się zgadzać,
+        # zanim zostanie on oficjalnie zmieniony (np. 5 klatek)
+        self.stabilization_frames = 5 
+        
+        # Przechowuje "stabilny" (potwierdzony) stan dla każdego miejsca
+        # Format: {'id_miejsca': 'Empty' | 'Occupied'}
+        self.spot_stable_status_buffer = {}
+        
+        # Przechowuje "kandydacki" stan i licznik klatek
+        # Format: {'id_miejsca': {'new_status': 'Empty', 'counter': 2}}
+        self.spot_candidate_status_buffer = {}
+
+        # Inicjalizujemy bufory
+        for pos in self.car_park_positions:
+            spot_id = str(pos.get('id', 'N/A'))
+            # Na starcie zakładamy, że wszystkie miejsca są puste (można zmienić na 'Occupied' jeśli wolisz)
+            self.spot_stable_status_buffer[spot_id] = 'Empty'
+            self.spot_candidate_status_buffer[spot_id] = {'new_status': 'Empty', 'counter': 0}
+        
+        # -----------------------------------------------------------------
     
     def _read_positions(self, car_park_positions_path: str) -> Tuple[List, List]:
         """Read parking positions and route points from pickle file"""
@@ -159,25 +183,68 @@ class ParkClassifier:
                     crop = processed_image[row_start:row_stop, col_start:col_stop]
                     count = cv2.countNonZero(crop)
                 
-                # Classify space
-                is_empty = count < threshold
+                # -----------------------------------------------------------------
+                # === NOWA LOGIKA: BUFOR STABILIZACYJNY (Anti-Flicker) ===
+                # -----------------------------------------------------------------
+                
+                # 1. Uzyskaj "surową" klasyfikację z tej klatki
+                raw_is_empty = count < threshold
+                raw_status = "Empty" if raw_is_empty else "Occupied"
+                
+                # 2. Pobierz dane z buforów
+                stable_status = self.spot_stable_status_buffer.get(spot_id, raw_status)
+                candidate = self.spot_candidate_status_buffer.get(spot_id)
+                
+                # 3. Zastosuj logikę bufora
+                if candidate is None:
+                    # (Fallback, gdyby miejsce nie zostało zainicjowane)
+                    is_empty = raw_is_empty
+                    status = raw_status
+                else:
+                    if raw_status == stable_status:
+                        # Stan surowy zgadza się ze stabilnym. Zresetuj kandydata.
+                        candidate['counter'] = 0
+                    elif raw_status == candidate['new_status']:
+                        # Stan surowy zgadza się z kandydatem. Zwiększ licznik.
+                        candidate['counter'] += 1
+                    else:
+                        # Stan surowy jest nowy. Ustaw nowego kandydata.
+                        candidate['new_status'] = raw_status
+                        candidate['counter'] = 1
+                        
+                    # 4. Sprawdź, czy kandydat osiągnął próg stabilności
+                    if candidate['counter'] >= self.stabilization_frames:
+                        # Tak! Awansuj kandydata na status stabilny
+                        stable_status = candidate['new_status']
+                        self.spot_stable_status_buffer[spot_id] = stable_status
+                        candidate['counter'] = 0
+                
+                    # 5. ZAWSZE UŻYWAJ STABILNEGO STANU DO RYSOWANIA I LOGIKI
+                    is_empty = (stable_status == "Empty")
+                    status = stable_status
+
+                # -----------------------------------------------------------------
+                # === KONIEC LOGIKI BUFORA ===
+                # -----------------------------------------------------------------
+                
+                # Classify space (używa teraz 'is_empty' i 'status' z bufora)
                 if is_empty:
                     empty_spaces += 1
                     color = (0, 255, 0)  # Green for empty
                     thickness = 5
-                    status = "Empty"
+                    # status = "Empty" (już ustawione)
                 else:
                     occupied_spaces += 1
                     color = (0, 0, 255)  # Red for occupied
                     thickness = 2
-                    status = "Occupied"
+                    # status = "Occupied" (już ustawione)
                 
-                # Store space details
+                # Store space details (używa stabilnego statusu)
                 space_details.append({
                     'id': spot_id, 
                     'points': points,
                     'status': status,
-                    'pixel_count': count,
+                    'pixel_count': count, # Zapisujemy surową liczbę pikseli dla debugowania
                     'is_empty': is_empty,
                     'irregular': is_irregular
                 })
@@ -329,4 +396,3 @@ class ParkClassifier:
                     return True
         return False
 
-# Removed _draw_route_to_space method and others that were duplicated by _draw_pathfinding_route
