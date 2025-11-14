@@ -7,3 +7,4 @@ system_architecture.puml
 out/
 data/parking_lots/opener.py
 data/parking_lots/output.txt
+!video_tests/*.mp4
