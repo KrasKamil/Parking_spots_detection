@@ -8,29 +8,7 @@ import os
 import numpy as np
 import subprocess
 import math
-# Zakładamy, że te elementy zostały przeniesione do utils.py, aby uniknąć błędu cyklicznego importu.
 from src.utils import list_files_three_columns, IMG_DIR, get_direct_youtube_url
-
-
-# Funkcja get_direct_youtube_url została przeniesiona do src/utils.py, 
-# ale ze względu na strukturę pliku musimy ją usunąć stąd, 
-# aby użyć tej zaimportowanej z utils. Jeśli była tu zdefiniowana, 
-# spowodowałoby to błąd redefinicji (lub cyklicznego importu, jeśli była importowana).
-# Ponieważ w przesłanym kodzie funkcja jest nadal zdefiniowana:
-
-# Definicja tej funkcji musi zostać USUNIĘTA Z TEGO PLIKU, 
-# aby nie kolidowała z importem z src.utils.
-
-# Poniżej zostawiam ją w komentarzu, aby pokazać, co należy usunąć, jeśli była
-# pozostawiona po naszej próbie debugowania:
-
-# def get_direct_youtube_url(youtube_url: str) -> str:
-#         """Uses yt-dlp to extract the direct stream URL for a YouTube video."""
-#         try:
-#             ...
-#         except Exception as e:
-#             ...
-#         return youtube_url 
 
 class ParkingMonitor:
     """Generic parking monitoring application"""
@@ -192,7 +170,7 @@ class ParkingMonitor:
             elif key == ord('s'):
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 filename = f"parking_snapshot_{timestamp}.jpg"
-                folder = 'results'
+                folder = 'data/results'
                 os.makedirs(folder, exist_ok=True)
                 filepath = os.path.join(folder, filename)
                 cv2.imwrite(filepath, display_frame)
@@ -245,30 +223,73 @@ class ParkingMonitor:
         cv2.destroyAllWindows()
 
 def main():
-    parser = argparse.ArgumentParser(description='Generic Parking Space Monitor')
-    parser.add_argument('--list', '-L', action='store_true', help='List all available parking lot configuration names and exit.')
-    parser.add_argument('--lot', '-l', default='default', help='Parking lot configuration name')
-    parser.add_argument('--video', '-v', default=None, help='Video source (file path or camera index)')
-    parser.add_argument('--image', '-i', default=None, help='Static image path')
-    parser.add_argument('--output', '-o', default=None, help='Output video path')
-    parser.add_argument('--mode', '-m', choices=['video', 'image'], default='video', help='Monitoring mode')
+    # Using RawTextHelpFormatter allows for better text formatting and line breaks in the help message.
+    parser = argparse.ArgumentParser(
+        description='🚗 IPCV-based Parking Space Monitoring and Analysis Tool.',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog="""
+Usage Examples:
+python app.py -l block -v 0                                      # Monitor using system camera (index 0).
+python app.py --lot Japan --mode video --output result.mp4       # Analyze video file and save output.
+python app.py -L                                                 # List available parking lot configurations.
+python app.py -l default --image data/source/img/default.png     # Analyze a static image with default parameters.
+python app.py -l block --threshold_c 16 --threshold_block 11     # Dynamically change threshold parameters (tuning).
+"""
+    )
     
-    # NEW ARGUMENT FOR VIDEO DURATION / ENDLESS MODE
-    parser.add_argument('--duration_minutes', type=float, default=0.0,
-                        help='Video recording duration in minutes. 0.0 means endless until stopped by user (q key).')
+    # ----------------------------------------------------
+    # GROUP 1: CONFIGURATION AND OPERATION MODE
+    # ----------------------------------------------------
+    config_group = parser.add_argument_group('🛠️ Configuration and Operation Mode')
     
-    # ARGUMENT DLA SKALOWANIA
-    parser.add_argument('--scale_percent', type=int, default=100, 
-                        help='Scale output image/video in percent (e.g., 50 for 50% size).')
+    config_group.add_argument('--list', '-L', action='store_true', 
+                              help='Lists all available parking lot configuration names (Locations) and exits.')
+    config_group.add_argument('--lot', '-l', default='default', 
+                              help='The name of the parking lot configuration (from config/parking\_config.json). Default: \'default\'.')
+    config_group.add_argument('--mode', '-m', choices=['video', 'image'], default='video', 
+                              help='Monitoring mode: \'video\' (stream/video file) or \'image\' (static image).')
+    
+    # ----------------------------------------------------
+    # GROUP 2: VIDEO/IMAGE SOURCES AND OUTPUT
+    # ----------------------------------------------------
+    source_group = parser.add_argument_group('🎥 Data Source and Output Options')
+    
+    source_group.add_argument('--video', '-v', default=None, 
+                              help='Video source: Path to a file, YouTube link, or system camera index (e.g., 0).')
+    source_group.add_argument('--image', '-i', default=None, 
+                              help='Path to a static image file (used in \'image\' mode).')
+    source_group.add_argument('--output', '-o', default=None, 
+                              help='Path to save the resulting output video file (e.g., result.mp4).')
+    
+    # ----------------------------------------------------
+    # GROUP 3: VISUAL AND TIME PARAMETERS
+    # ----------------------------------------------------
+    visual_group = parser.add_argument_group('⏱️ Display and Time Control')
+    
+    visual_group.add_argument('-t','--duration_minutes', type=float, default=0.0,
+                              help='Video recording duration in minutes. 0.0 means endless until stopped by user (q key).')
+    visual_group.add_argument('--scale_percent', type=int, default=100, 
+                              help='Scales the output image/video in percent (e.g., 50 for 50% size). Reduces display load.')
 
-    # Image processing overrides
-    parser.add_argument('--blur_kernel', type=int, nargs=2, help='Gaussian blur kernel size, e.g., 3 3')
-    parser.add_argument('--blur_sigma', type=float, help='Gaussian blur sigma')
-    parser.add_argument('--threshold_block', type=int, help='Adaptive threshold block size')
-    parser.add_argument('--threshold_c', type=int, help='Adaptive threshold C value')
-    parser.add_argument('--median_blur_kernel', type=int, help='Median blur kernel size')
-    parser.add_argument('--dilate_kernel', type=int, nargs=2, help='Dilation kernel size, e.g., 3 3')
-    parser.add_argument('--dilate_iterations', type=int, help='Number of dilation iterations')
+    # ----------------------------------------------------
+    # GROUP 4: IPCV PARAMETER OVERRIDES (TUNING)
+    # ----------------------------------------------------
+    ipcv_group = parser.add_argument_group('⚙️ IPCV Parameter Overrides (Tuning)')
+    
+    ipcv_group.add_argument('--blur_kernel', type=int, nargs=2, 
+                            help='Gaussian blur kernel size (e.g., 3 3).')
+    ipcv_group.add_argument('--blur_sigma', type=float, 
+                            help='Gaussian blur sigma value.')
+    ipcv_group.add_argument('--threshold_block', type=int, 
+                            help='Adaptive threshold block size (must be odd, e.g., 11).')
+    ipcv_group.add_argument('--threshold_c', type=int, 
+                            help='Adaptive threshold C constant (usually between 1 and 20).')
+    ipcv_group.add_argument('--median_blur_kernel', type=int, 
+                            help='Median blur kernel size.')
+    ipcv_group.add_argument('--dilate_kernel', type=int, nargs=2, 
+                            help='Dilation kernel size (e.g., 3 3).')
+    ipcv_group.add_argument('--dilate_iterations', type=int, 
+                            help='Number of dilation iterations.')
 
     args = parser.parse_args()
 
@@ -277,9 +298,9 @@ def main():
     if args.list:
         available_lots = config_manager.list_parking_lots()
         
-        names = [lot for lot in available_lots if lot != 'default'] # <-- Zmienna z listą konfiguracji
+        names = [lot for lot in available_lots if lot != 'default']
         
-        print("\nLista dostępnych konfiguracji parkingów (z config/parking_config.json):")
+        print("\nList of available parking lot configurations (from config/parking\_config.json):")
         
         if names:
             cols = 3
@@ -295,17 +316,17 @@ def main():
                         row_str += entry.ljust(maxlen)
                 print(row_str)
         else:
-            print("  Brak dostępnych konfiguracji. Sprawdź pliki konfiguracyjne.")
+            print("  No configurations available. Check your configuration files.")
             
         print("\n---")
         
-        print("Pliki źródłowe do ewentualnej kalibracji (data/source/img):")
+        print("Source files for potential calibration (data/source/img):")
         list_files_three_columns(IMG_DIR, pattern="*.png", cols=3)
         
         print("") 
         return
     
-    # Blocks above execute if --list is  not provided
+    # Blocks above execute if --list is not provided
     available_lots = config_manager.list_parking_lots()
     
     display_lots = [lot for lot in available_lots if lot != 'default']
@@ -315,10 +336,9 @@ def main():
     monitor.apply_overrides(args)
 
     scale_percent = args.scale_percent
-    duration_minutes = args.duration_minutes # Capture the new argument
+    duration_minutes = args.duration_minutes
 
     if args.mode == 'video':
-        # Pass the new duration_minutes argument
         monitor.monitor_video(args.video, args.output, scale_percent, duration_minutes) 
     else:
         monitor.monitor_image(args.image, scale_percent)
