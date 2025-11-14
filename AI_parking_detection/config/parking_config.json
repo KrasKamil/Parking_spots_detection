@@ -135,6 +135,7 @@
             "source_image": "data\\source\\img\\nowa_sarzyna_20251105_142157.png",
             "video_source": "https://www.youtube.com/watch?v=KUfeBTzhEow"
         }
+
     },
     "processing_params": {
         "gaussian_blur_kernel": [

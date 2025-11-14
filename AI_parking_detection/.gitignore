@@ -3,3 +3,7 @@ src/__pycache__/
 config/temp_calibration_data.json
 config/temp_last_lot.json
 README.md
+system_architecture.puml
+out/
+data/parking_lots/opener.py
+data/parking_lots/output.txt
