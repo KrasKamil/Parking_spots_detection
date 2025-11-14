@@ -87,17 +87,38 @@ class ParkingMonitor:
         # Writer must be configured for SCALED output image
         writer = None
         if output_path:
+            # If user provided a filename without extension, default to .mp4 and place
+            # it under the `video_tests/` folder. If they provided a path with an
+            # extension, use it as-is.
+            #
+            # Examples:
+            #  - "result" -> "video_tests/result.mp4"
+            #  - "result.mp4" -> "result.mp4" (used as provided)
+            #  - "results/out.mov" -> "results/out.mov" (used as provided)
+            base_output = output_path
+            filename = os.path.basename(base_output)
+            name, ext = os.path.splitext(filename)
+
+            if ext:
+                final_output_path = base_output
+            else:
+                final_output_path = os.path.join("video_tests", base_output + ".mp4")
+
+            # Ensure output directory exists
+            out_dir = os.path.dirname(final_output_path) or "video_tests"
+            os.makedirs(out_dir, exist_ok=True)
+
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             fps = cap.get(cv2.CAP_PROP_FPS)
-            
+
             # Writer dimensions are scaled
             width_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            
+
             width_out = int(width_orig * scale_percent / 100)
             height_out = int(height_orig * scale_percent / 100)
-            
-            writer = cv2.VideoWriter("video_tests/"+output_path, fourcc, fps, (width_out, height_out))
+
+            writer = cv2.VideoWriter(final_output_path, fourcc, fps, (width_out, height_out))
         
         print("Controls: 'q' quit | 's' save frame | 'p' pause/resume | SPACE step frame")
         
