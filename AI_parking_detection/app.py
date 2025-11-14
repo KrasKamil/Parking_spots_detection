@@ -97,7 +97,7 @@ class ParkingMonitor:
             width_out = int(width_orig * scale_percent / 100)
             height_out = int(height_orig * scale_percent / 100)
             
-            writer = cv2.VideoWriter("data/results/"+output_path, fourcc, fps, (width_out, height_out))
+            writer = cv2.VideoWriter("video_tests/"+output_path, fourcc, fps, (width_out, height_out))
         
         print("Controls: 'q' quit | 's' save frame | 'p' pause/resume | SPACE step frame")
         
