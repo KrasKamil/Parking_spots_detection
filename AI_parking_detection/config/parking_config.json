@@ -134,8 +134,16 @@
             "positions_file": "data/parking_lots/nowa_sarzyna_positions",
             "source_image": "data\\source\\img\\nowa_sarzyna_20251105_142157.png",
             "video_source": "https://www.youtube.com/watch?v=KUfeBTzhEow"
+        },
+        "japan1": {
+            "name": "Japan1",
+            "rect_width": 63,
+            "rect_height": 90,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/japan1_positions",
+            "source_image": "data\\source\\img\\japan1_20251114_143201.png",
+            "video_source": "https://www.youtube.com/watch?v=_1PfF1v9GJc"
         }
-
     },
     "processing_params": {
         "gaussian_blur_kernel": [
