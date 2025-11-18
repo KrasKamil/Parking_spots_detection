@@ -344,17 +344,34 @@ class ParkClassifier:
         return self.route_points[min_index]
     
     def _find_path_a_star(self, start_node: Tuple[int, int], end_node: Tuple[int, int], occupied_space_details: List[dict]) -> Optional[List[Tuple[int, int]]]:
-        """Implementacja uproszczonego algorytmu A* na grafie Route Points."""
+        """
+        Wersja z 'Siatką Połączeń' (Mesh): Łączy punkty na podstawie odległości,
+        dając algorytmowi swobodę wyboru trasy (objazdu).
+        """
         
         if start_node not in self.route_points or end_node not in self.route_points: return None
 
         nodes = self.route_points
+        
+        # Build graph based on proximity
         graph = {node: [] for node in nodes}
         
-        for i in range(len(nodes)):
-            if i > 0: graph[nodes[i]].append(nodes[i-1])
-            if i < len(nodes) - 1: graph[nodes[i]].append(nodes[i+1])
-
+        # Max distance to connect nodes
+        # IF TOO SMALL -> isolated nodes
+        # IF TOO LARGE -> performance hit
+        CONNECTION_RADIUS = 250
+        
+        for i, node_a in enumerate(nodes):
+            for j, node_b in enumerate(nodes):
+                if i == j: continue # Nie łącz punktu samego ze sobą
+                
+                # Oblicz dystans między punktami
+                dist = np.linalg.norm(np.array(node_a) - np.array(node_b))
+                
+                if dist < CONNECTION_RADIUS:
+                    
+                    graph[node_a].append(node_b)
+        
         def heuristic(node):
             return np.linalg.norm(np.array(node) - np.array(end_node))
 
@@ -366,6 +383,7 @@ class ParkClassifier:
 
             if current_node == end_node: return path
 
+            # Jeśli nie ma sąsiadów, to znaczy że punkt jest "samotną wyspą" (zwiększ CONNECTION_RADIUS)
             for neighbor in graph[current_node]:
                 cost = np.linalg.norm(np.array(current_node) - np.array(neighbor)) 
                 new_g = g + cost
@@ -381,18 +399,45 @@ class ParkClassifier:
         return None
     
     def _segment_intersects_occupied_space(self, p1: Tuple[int, int], p2: Tuple[int, int], occupied_spaces: List[dict]) -> bool:
-        """Check if the line segment p1->p2 intersects any occupied parking space"""
+        """
+        Sprawdza, czy linia p1->p2 przecina jakiekolwiek zajęte miejsce.
+        Wersja ulepszona: gęste próbkowanie + margines bezpieczeństwa.
+        """
+        
+        if not occupied_spaces:
+            return False
+
+        # 1. Oblicz wektor i długość odcinka
+        p1_arr = np.array(p1)
+        p2_arr = np.array(p2)
+        dist_total = np.linalg.norm(p1_arr - p2_arr)
+        
+        if dist_total == 0: return False
+
+        # 2. Dynamiczna liczba punktów: Sprawdzamy co 10 pikseli
+        # Dla odcinka 500px -> 51 punktów. Dla 20px -> 3 punkty.
+        step_size = 10 
+        num_checks = int(dist_total / step_size) + 2 
+        
         for occupied_space in occupied_spaces:
             points = occupied_space['points']
+            # Zamiana na format oczekiwany przez OpenCV
             pts = np.array(points, dtype=np.int32)
 
-            num_checks = 5
-            for i in range(num_checks + 1):
-                t = i / num_checks
+            for i in range(num_checks):
+                t = i / (num_checks - 1) # t od 0.0 do 1.0
+                
+                # Interpolacja punktu na linii
                 check_x = int(p1[0] * (1-t) + p2[0] * t)
                 check_y = int(p1[1] * (1-t) + p2[1] * t)
                 
-                if cv2.pointPolygonTest(pts, (check_x, check_y), False) >= 0:
+                # 3. Test z marginesem (measureDist=True)
+                # dist_to_border: >0 wewnątrz, <0 na zewnątrz.
+                # Warunek >= -5 oznacza: "Wewnątrz LUB bliżej niż 5px od krawędzi"
+                dist_to_border = cv2.pointPolygonTest(pts, (check_x, check_y), True)
+                
+                if dist_to_border >= -5:
                     return True
+                    
         return False
 
