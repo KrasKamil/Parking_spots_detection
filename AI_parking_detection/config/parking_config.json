@@ -99,15 +99,6 @@
             "source_image": "data\\source\\img\\resort.png",
             "video_source": "https://www.youtube.com/watch?v=4a-3iEM7bHk"
         },
-        "korea": {
-            "name": "Korea",
-            "rect_width": 422,
-            "rect_height": 130,
-            "threshold": 1000,
-            "positions_file": "data/parking_lots/korea_positions",
-            "source_image": "data\\source\\img\\korea_20251104_094927.png",
-            "video_source": "https://www.youtube.com/watch?v=_6tMEKrOU2Q"
-        },
         "parkoviste": {
             "name": "Parkoviste",
             "rect_width": 34,
@@ -125,24 +116,6 @@
             "positions_file": "data/parking_lots/rynek_jaslo_positions",
             "source_image": "data\\source\\img\\rynek_jaslo_20251105_120932.png",
             "video_source": "https://cdn01.aztv.pl/sesja_jaslo/sesja_jaslo.stream/playlist.m3u8?conn_id=0512061015"
-        },
-        "nowa_sarzyna": {
-            "name": "Nowa Sarzyna",
-            "rect_width": 97,
-            "rect_height": 5,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/nowa_sarzyna_positions",
-            "source_image": "data\\source\\img\\nowa_sarzyna_20251105_142157.png",
-            "video_source": "https://www.youtube.com/watch?v=KUfeBTzhEow"
-        },
-        "japan1": {
-            "name": "Japan1",
-            "rect_width": 63,
-            "rect_height": 90,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/japan1_positions",
-            "source_image": "data\\source\\img\\japan1_20251114_143201.png",
-            "video_source": "https://www.youtube.com/watch?v=_1PfF1v9GJc"
         }
     },
     "processing_params": {
@@ -153,7 +126,7 @@
         "gaussian_blur_sigma": 1,
         "adaptive_threshold_max_value": 255,
         "adaptive_threshold_block_size": 25,
-        "adaptive_threshold_c": 16,
+        "adaptive_threshold_c": 19,
         "median_blur_kernel": 5,
         "dilate_kernel_size": [
             3,

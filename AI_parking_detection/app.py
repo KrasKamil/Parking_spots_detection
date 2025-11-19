@@ -319,7 +319,7 @@ python app.py -l block --threshold_c 16 --threshold_block 11     # Dynamically c
     if args.list:
         available_lots = config_manager.list_parking_lots()
         
-        names = [lot for lot in available_lots if lot != 'default']
+        names = [lot for lot in available_lots if (lot != 'default' and lot != 'empty_calibration')]
         
         print("\nList of available parking lot configurations (from config/parking\_config.json):")
         
