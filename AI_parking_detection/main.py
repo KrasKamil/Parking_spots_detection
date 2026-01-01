@@ -5,6 +5,7 @@ import json
 import math
 import cv2
 import datetime
+import sys 
 from src.utils import list_files_three_columns, IMG_DIR, get_direct_youtube_url
 
 CONFIG_PATH = os.path.join("config", "parking_config.json")
@@ -127,7 +128,7 @@ def main():
         print("\n== Starting annotation tool in CALIBRATION MODE ==")
         print("💡 INSTRUCTIONS: Open window, press 'c', measure W/H dimensions (by clicking two corners) and close window.")
         
-        subprocess.run(["python", "car_park_coordinate_generator.py", 
+        subprocess.run([sys.executable, "car_park_coordinate_generator.py", 
                 "--lot", "empty_calibration", 
                 "--image", image_path, 
                 "--mode", "c"], 
@@ -142,7 +143,7 @@ def main():
     try:
         print("\n== Running add_parking_config.py (enter measured parameters) ==")
         # Run without arguments, forcing interactive data collection.
-        subprocess.run(["python", "add_parking_config.py", 
+        subprocess.run([sys.executable, "add_parking_config.py", 
                         "--default_name", default_lot_name, 
                         "--image_path", image_path], 
                        check=True)
@@ -164,7 +165,8 @@ def main():
     try:
         print(f"\n== Running car_park_coordinate_generator.py --lot {lot_name} ==")
         print("📌 Now you can mark all parking spaces (modes 'p', 'i').")
-        subprocess.run(["python", "car_park_coordinate_generator.py", "--lot", lot_name], check=True)
+        
+        subprocess.run([sys.executable, "car_park_coordinate_generator.py", "--lot", lot_name], check=True)
         print("✅ Completed car_park_coordinate_generator.py")
     except subprocess.CalledProcessError as e:
         print("❌ car_park_coordinate_generator.py ended with an error:", e)
@@ -173,7 +175,8 @@ def main():
     try:
         print(f"\n== Running app.py --lot {lot_name} (Monitoring) ==")
         print("🎥 Starting monitoring preview. Close window to finish.")
-        subprocess.run(["python", "app.py", "--lot", lot_name], check=True)
+        
+        subprocess.run([sys.executable, "app.py", "--lot", lot_name], check=True)
         print("✅ Monitoring completed.")
     except subprocess.CalledProcessError as e:
         print("❌ app.py ended with an error:", e)
