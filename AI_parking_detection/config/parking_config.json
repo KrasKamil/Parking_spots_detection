@@ -89,15 +89,6 @@
             "positions_file": "data/parking_lots/rynek_positions",
             "source_image": "data/source/img/RYNEK.png",
             "video_source": "https:/cdn01.aztv.pl/sesja_jaslo/sesja_jaslo.stream/playlist.m3u8?conn_id=0512061015"
-        },
-        "blok_TEST": {
-            "name": "blok_TEST",
-            "rect_width": 93,
-            "rect_height": 206,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/blok_TEST_positions",
-            "source_image": "data/source/img/blok_4.png",
-            "video_source": "data/source/video/blok_4.mp4"
         }
     },
     "processing_params": {
