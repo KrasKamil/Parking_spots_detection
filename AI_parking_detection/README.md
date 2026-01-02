@@ -110,19 +110,29 @@ A GUI tool for precise position marking:
 python car_park_coordinate_generator.py --lot <your_lot_name>
 ```
 
-### Controls
+### Editor GUI — Detailed Controls & Tips ✅
 
-| Mode / Action | Key | Description |
-|--------------|-----|-------------|
-| Rectangular | P | Left-click to add a rectangular space |
-| Irregular | I | 4 clicks to create a polygon-shaped space |
-| Route Points | T | Left-click to add a route point (for A* Pathfinding). Right-click to remove the nearest one |
-| Edit ID | E | Left-click a spot to activate a text box to change its ID. Press Enter to confirm |
-| CALIBRATION | C | Click two corners to measure W/H dimensions |
-| Add/Select | L-Click | Adds a space/point or selects a spot for ID editing |
-| Remove/Cancel | R-Click | Removes a parking space or cancels an irregular shape |
-| Save | S | Saves the positions to the file |
-| Quit | Q/ESC | Exits the tool |
+The annotation editor (`car_park_coordinate_generator.py`) provides an interactive GUI with helpful on-screen hints and a compact overlay console.
+
+| Mode / Action | Key / Mouse | Description |
+|--------------|-------------|-------------|
+| Rectangular  | `P` / L-Click | Add a rectangular space. **Mouse wheel** rotates the preview rectangle. Preview is shown under the cursor. Right-click deletes a space. |
+| Irregular    | `I` / L-Click | Click 4 corners to create a polygon-shaped space. Right-click cancels the last point. |
+| Route Points | `T` / L-Click | Add a route point (for A* pathfinding). `R-Click` removes the last point. |
+| Edit ID      | `E` / L-Click | Click on a spot to open an ID editor. Type the new ID and press `Enter` to confirm. `Backspace` edits, `Esc` cancels. |
+| Calibration  | `C` / L-Click | Click **two corners** of a typical parking space, then press `Enter` to save. Values are stored in `config/temp_calibration.json`. |
+| Save         | `S` | Save positions to the lot file (`data/parking_lots/<lot>_positions`). |
+| Reset        | `R` | Reset (delete) all points in the current lot. |
+| Toggle UI    | `U` | Hide/Show UI overlays and buttons. |
+| Toggle Logs  | `H` | Toggle the on-screen Overlay Console (scrollable logs, `CLEAR` button). |
+| Help Panel   | Click top-left **POMOC** button | Opens a help panel with shortcuts and tips. |
+| Quit         | `Q` / `ESC` or click the on-screen button | Exit editor (saves unless in calibration mode).
+
+Notes:
+- The editor shows helpful status bars (mode, hints) and a small overlay console for logs. Use the mouse to interact with the console (scroll wheel to page, `CLEAR` button to wipe logs).
+- When in calibration mode (`--mode c`) the editor only accepts calibration points; press `Enter` to finish.
+
+---
 
 ## 🎥 Parking Monitoring (app.py)
 
@@ -143,11 +153,22 @@ python app.py --lot <your_lot_name> --video <your_video_source>
 | --output, -o | Path to save the output video file | --output out.mp4 |
 | --scale_percent | Scale the output video/image display (e.g., 50 for 50%) | --scale_percent 50 |
 
-### Parameter Overrides
+### Interactive Tuning & GUI Controls 🔧
 
-All `processing_params` can be overridden (e.g., `--threshold_block 45`).
+The monitoring window contains an interactive overlay console and an optional **TUNING** window (trackbars) for live parameter adjustment.
 
-Example: `--threshold_c 10`
+- **H** — Toggle on-screen log/console (Overlay Console). The console supports mouse wheel scrolling and a `CLEAR` button.
+- **Ctrl+T** — Toggle the TUNING window (trackbars). When enabled, a preview of processed frame appears.
+- **Trackbars (TUNING)** — `Threshold (Pix)`, `Block Size`, `Constant C`, `Blur Kernel` (live changes).
+- **W** (while TUNING is active) — Save current tuning values to `config/parking_config.json` (`threshold` for the parking lot and `processing_params` globally).
+- **R** (while TUNING is active) — Reset trackbars to defaults from config.
+- **P** — Pause / Resume video
+- **Q** — Quit
+- **On-screen button** — Click the `WYJSCIE` button (top-right) to exit
+
+Notes:
+- CLI flags (`--blur_kernel`, `--threshold_block`, `--threshold_c`, etc.) still allow starting with preconfigured overrides.
+- YouTube streams are supported with `yt-dlp` (ffmpeg recommended).
 
 ### A* Pathfinding
 
@@ -156,9 +177,12 @@ In video mode, the system automatically draws the shortest and safest route to t
 ### Monitoring Controls (Video)
 
 - **Q:** Quit
-- **S:** Save the current frame as an image (in the results directory)
 - **P:** Pause/Resume
-- **SPACE:** Step forward one frame (only when paused)
+- **Ctrl+T:** Toggle Tuning window
+- **W:** Save tuning settings (when tuning active)
+- **R:** Reset tuning sliders (when tuning active)
+- **H:** Toggle overlay logs
+- **Click UI:** `WYJSCIE` button to quit
 
 
 ## 📝 A Note on Configuration & Data
