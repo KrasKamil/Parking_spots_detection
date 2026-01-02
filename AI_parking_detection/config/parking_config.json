@@ -10,13 +10,13 @@
             "video_source": "data/source/video/carPark.mp4"
         },
         "empty_calibration": {
-            "name": "Calibration Temporary",
-            "rect_width": 1,
-            "rect_height": 1,
-            "threshold": 1,
-            "positions_file": "config/temp_calibration_positions",
-            "source_image": "data/source/example_image.png",
-            "video_source": ""
+            "name": "empty_calibration",
+            "rect_width": 184,
+            "rect_height": 122,
+            "threshold": 900,
+            "positions_file": "data\\parking_lots\\empty_calibration_positions",
+            "source_image": "C:\\Users\\krask\\Documents\\Parking_recomendation\\Parking_spots_detection\\AI_parking_detection\\data\\source\\img\\chilmark_20260101_203608.png",
+            "video_source": "C:\\Users\\krask\\Documents\\Parking_recomendation\\Parking_spots_detection\\AI_parking_detection\\data\\source\\img\\chilmark_20260101_203608.png"
         },
         "blok": {
             "name": "Blok",
@@ -72,15 +72,6 @@
             "source_image": "data/source/img/blok_5.png",
             "video_source": "data/source/video/blok_5.mp4"
         },
-        "Dobrowa_Gornicza": {
-            "name": "Dobrowa Gornicza",
-            "rect_width": 262,
-            "rect_height": 41,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/Dobrowa_Gornicza_positions",
-            "source_image": "data/source/img/dabrowa_gornicza.png",
-            "video_source": "https://www.youtube.com/watch?v=bmgJgTEjhtc"
-        },
         "japan": {
             "name": "Japan",
             "rect_width": 72,
@@ -90,38 +81,20 @@
             "source_image": "data/source/img/japan.png",
             "video_source": "https://www.youtube.com/watch?v=_1PfF1v9GJc"
         },
-        "resort": {
-            "name": "Birmington Resort",
-            "rect_width": 72,
-            "rect_height": 83,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/birmington_resort_positions",
-            "source_image": "data\\source\\img\\resort.png",
-            "video_source": "https://www.youtube.com/watch?v=4a-3iEM7bHk"
-        },
-        "parkoviste": {
-            "name": "Parkoviste",
-            "rect_width": 34,
-            "rect_height": 95,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/parkoviste_positions",
-            "source_image": "data\\source\\img\\parkoviste_20251105_120025.png",
-            "video_source": "https://www.youtube.com/watch?v=ccn2otPNDeI"
-        },
-        "rynek_jaslo": {
-            "name": "Rynek Jaslo",
-            "rect_width": 107,
-            "rect_height": 48,
-            "threshold": 100,
-            "positions_file": "data/parking_lots/rynek_jaslo_positions",
-            "source_image": "data\\source\\img\\rynek_jaslo_20251105_120932.png",
-            "video_source": "https://cdn01.aztv.pl/sesja_jaslo/sesja_jaslo.stream/playlist.m3u8?conn_id=0512061015"
+        "rynek": {
+            "name": "rynek",
+            "rect_width": 77,
+            "rect_height": 154,
+            "threshold": 362,
+            "positions_file": "data/parking_lots/rynek_positions",
+            "source_image": "data/source/img/RYNEK.png",
+            "video_source": "https:/cdn01.aztv.pl/sesja_jaslo/sesja_jaslo.stream/playlist.m3u8?conn_id=0512061015"
         }
     },
     "processing_params": {
         "gaussian_blur_kernel": [
-            3,
-            3
+            9,
+            9
         ],
         "gaussian_blur_sigma": 1,
         "adaptive_threshold_max_value": 255,

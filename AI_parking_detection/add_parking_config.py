@@ -1,193 +1,260 @@
+"""
+Moduł odpowiedzialny za interfejs graficzny konfiguracji parametrów parkingu.
+Umożliwia definiowanie wymiarów miejsc, progów detekcji oraz źródeł strumienia wideo.
+"""
+
 import json
 import os
 import argparse
+import sys
+import tkinter as tk
+from tkinter import messagebox, filedialog
+from pathlib import Path
 
-CONFIG_FILE = "config/parking_config.json"
-CALIBRATION_OUTPUT_FILE = "config/temp_calibration_data.json" 
-TEMP_LOT_FILE = "config/temp_last_lot.json"
+# --- KONFIGURACJA ŚCIEŻEK (ABSOLUTNE) ---
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_DIR = BASE_DIR / "config"
+CONFIG_FILE = CONFIG_DIR / "parking_config.json"
+TEMP_CALIB_FILE = CONFIG_DIR / "temp_calibration.json"
+TEMP_LOT_FILE = CONFIG_DIR / "temp_last_lot.json"
+TEMP_URL_FILE = CONFIG_DIR / "temp_url_source.json" 
+VIDEO_DIR = BASE_DIR / "data" / "source" / "video"
+
+VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+COLOR_BG = "#f4f6f9"
+COLOR_SUCCESS = "#27ae60"
+FONT_LABEL = ("Segoe UI", 10)
+FONT_ENTRY = ("Segoe UI", 11)
+FONT_HEADER = ("Segoe UI", 14, "bold")
+
+def make_relative(path_str):
+    """
+    Konwertuje ścieżkę absolutną na relatywną względem folderu głównego projektu.
+
+    Args:
+        path_str (str): Ścieżka wejściowa do konwersji.
+
+    Returns:
+        str: Ścieżka relatywna ze znormalizowanymi separatorami '/'.
+    """
+    if not path_str: return ""
+    try:
+        path_obj = Path(path_str).resolve()
+        if BASE_DIR in path_obj.parents:
+            return str(path_obj.relative_to(BASE_DIR)).replace("\\", "/")
+        return str(path_str).replace("\\", "/")
+    except:
+        return str(path_str).replace("\\", "/")
 
 def load_or_create_config():
-    """Loads existing configuration file or creates a new one with default structure."""
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    else:
-        return {
-            "parking_lots": {
-                "default": {
-                    "name": "Default Parking Lot",
-                    "rect_width": 107,
-                    "rect_height": 48,
-                    "threshold": 900,
-                    "positions_file": "data/parking_lots/default_positions",
-                    "source_image": "data/source/example_image.png",
-                    "video_source": "data/source/carPark.mp4"
-                },
-                "empty_calibration": { 
-                    "name": "Calibration Temporary",
-                    "rect_width": 1, 
-                    "rect_height": 1,
-                    "threshold": 1,
-                    "positions_file": "config/temp_calibration_positions",
-                    "source_image": "data/source/example_image.png", 
-                    "video_source": ""
-                }
-            },
-            "processing_params": {
-                "gaussian_blur_kernel": [3, 3],
-                "gaussian_blur_sigma": 1,
-                "adaptive_threshold_max_value": 255,
-                "adaptive_threshold_block_size": 25,
-                "adaptive_threshold_c": 16,
-                "median_blur_kernel": 5,
-                "dilate_kernel_size": [3, 3],
-                "dilate_iterations": 1
-            }
-        }
+    """
+    Ładuje istniejący plik konfiguracyjny lub inicjalizuje nową strukturę słownika.
 
+    Returns:
+        dict: Struktura konfiguracji parkingów i parametrów przetwarzania.
+    """
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+        except: pass
+    return {"parking_lots": {}, "processing_params": {"gaussian_blur_kernel": [5, 5]}}
 
 def save_config(config):
-    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    
-def save_last_lot_name(lot_name: str):
-    """Saves the name of the last successfully created lot to a temporary file."""
-    try:
-        os.makedirs(os.path.dirname(TEMP_LOT_FILE), exist_ok=True)
-        with open(TEMP_LOT_FILE, 'w') as f:
-            json.dump({"lot_name": lot_name}, f)
-        print(f"✅ Parking lot name '{lot_name}' saved temporarily.")
-    except Exception as e:
-        print(f"❌ Error saving parking lot name: {e}")
+    """
+    Zapisuje bieżący stan konfiguracji do pliku JSON.
 
+    Args:
+        config (dict): Słownik konfiguracyjny do zapisu.
+    """
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=4, ensure_ascii=False)
+
+def save_last_lot_name(lot_name: str):
+    """
+    Zapisuje nazwę ostatnio edytowanego parkingu do pliku tymczasowego.
+
+    Args:
+        lot_name (str): Nazwa parkingu.
+    """
+    try:
+        with open(TEMP_LOT_FILE, 'w', encoding='utf-8') as f:
+            json.dump({"lot_name": lot_name}, f)
+    except: pass
+
+def load_temp_url():
+    """
+    Odczytuje adres URL z pliku tymczasowego wygenerowanego przez Launcher.
+
+    Returns:
+        str: Adres URL źródła wideo lub pusty ciąg znaków.
+    """
+    if TEMP_URL_FILE.exists():
+        try:
+            with open(TEMP_URL_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get("url", "")
+        except: pass
+    return ""
+
+def cleanup_temp_url():
+    """Usuwa plik tymczasowy zawierający adres URL źródła."""
+    if TEMP_URL_FILE.exists():
+        try: os.remove(TEMP_URL_FILE)
+        except: pass
 
 def create_parking_lot(config, name, rect_width, rect_height, threshold, image_path, video_path):
-    """Adds a new parking lot configuration to config.json"""
+    """
+    Tworzy nową sekcję parkingu w głównej konfiguracji i zapisuje zmiany.
+
+    Args:
+        config (dict): Główny słownik konfiguracji.
+        name (str): Nazwa parkingu.
+        rect_width (int): Szerokość prostokąta detekcji.
+        rect_height (int): Wysokość prostokąta detekcji.
+        threshold (int): Próg detekcji pikseli.
+        image_path (str): Ścieżka do obrazu referencyjnego.
+        video_path (str): Ścieżka do źródła wideo.
+
+    Returns:
+        str: Relatywna ścieżka do pliku pozycji .pickle.
+    """
     positions_file = f"data/parking_lots/{name}_positions"
-    
+    rel_image = make_relative(image_path)
+    rel_video = make_relative(video_path)
+
     new_lot = {
-        "name": name.replace('_', ' ').title(),
-        "rect_width": rect_width,
-        "rect_height": rect_height,
-        "threshold": threshold,
+        "name": name,
+        "rect_width": int(rect_width),
+        "rect_height": int(rect_height),
+        "threshold": int(threshold),
         "positions_file": positions_file,
-        "source_image": image_path or f"data/source/img/{name}.png",
-        "video_source": video_path or f"data/source/video/{name}.mp4"
+        "source_image": rel_image,
+        "video_source": rel_video 
     }
     
     config["parking_lots"][name] = new_lot
-    os.makedirs("data/parking_lots", exist_ok=True)
     save_config(config)
     save_last_lot_name(name)
-    
-    print(f"\n✅ Added configuration '{name}'!")
-    print(f"📁 Positions file: {positions_file}")
-    print(f"🖼️  Image: {new_lot['source_image']}")
-    print(f"🎥  Video: {new_lot['video_source']}")
-    print(f"\n📋 Next steps:")
-    print(f"1. Mark parking spaces:")
-    print(f"   python car_park_coordinate_generator.py --lot {name}")
-    print(f"2. Start monitoring:")
-    print(f"   python app.py --lot {name}")
+    cleanup_temp_url() 
+    print(f"[SUCCESS] Zapisano konfigurację: {name}")
+    return positions_file
 
-def read_and_clean_calibration_data():
-    """Reads temporary calibration data and removes the file."""
-    if os.path.exists(CALIBRATION_OUTPUT_FILE):
+def gui_config_form(default_name, default_img, existing_names, def_w=50, def_h=100):
+    """
+    Wyświetla formularz GUI do wprowadzania parametrów nowego parkingu.
+
+    Args:
+        default_name (str): Sugerowana nazwa parkingu.
+        default_img (str): Ścieżka do wybranego obrazu.
+        existing_names (list): Lista nazw już istniejących parkingów.
+        def_w (int): Domyślna szerokość miejsca.
+        def_h (int): Domyślna wysokość miejsca.
+
+    Returns:
+        dict: Słownik zawierający wprowadzone dane lub flagę saved=False.
+    """
+    result = {"saved": False}
+    root = tk.Tk()
+    root.title("Konfiguracja Parametrów")
+    
+    ws = root.winfo_screenwidth(); hs = root.winfo_screenheight()
+    root.geometry(f'600x600+{int(ws/2-300)}+{int(hs/2-300)}')
+    root.configure(bg=COLOR_BG)
+    root.attributes("-topmost", True) 
+
+    tk.Label(root, text="Krok 3: Parametry Parkingu", font=FONT_HEADER, bg=COLOR_BG, fg="#2c3e50").pack(pady=20)
+    form_frame = tk.Frame(root, bg=COLOR_BG)
+    form_frame.pack(fill="both", expand=True, padx=40)
+
+    def create_field(label_text, default_val, field_type="text"):
+        tk.Label(form_frame, text=label_text, font=FONT_LABEL, bg=COLOR_BG, anchor="w").pack(fill="x", pady=(10, 0))
+        input_frame = tk.Frame(form_frame, bg=COLOR_BG)
+        input_frame.pack(fill="x", pady=(5, 0))
+        entry = tk.Entry(input_frame, font=FONT_ENTRY, relief="flat", highlightthickness=1)
+        entry.insert(0, str(default_val))
+        entry.pack(side="left", fill="x", expand=True, ipady=5)
+        
+        if field_type == "video_picker":
+            def browse_file():
+                f = filedialog.askopenfilename(initialdir=str(VIDEO_DIR), title="Wybierz wideo", filetypes=(("Wideo", "*.mp4 *.avi"), ("Wszystkie", "*.*")))
+                if f: 
+                    entry.delete(0, tk.END)
+                    entry.insert(0, make_relative(f))
+            tk.Button(input_frame, text="📂 Plik", command=browse_file).pack(side="right", padx=5)
+        return entry
+
+    calib_w, calib_h = def_w, def_h
+    if TEMP_CALIB_FILE.exists():
         try:
-            with open(CALIBRATION_OUTPUT_FILE, 'r') as f:
-                data = json.load(f)
-            os.remove(CALIBRATION_OUTPUT_FILE)  # Remove file to avoid using old data
-            print(f"✅ Successfully loaded calibration dimensions: W={data.get('rect_width')}, H={data.get('rect_height')}")
-            return data.get('rect_width'), data.get('rect_height')
-        except Exception as e:
-            print(f"❌ Error reading/removing calibration file: {e}")
-            return None, None
-    return None, None
+            with open(TEMP_CALIB_FILE, 'r') as f:
+                cdata = json.load(f)
+                calib_w = cdata.get("rect_width", def_w)
+                calib_h = cdata.get("rect_height", def_h)
+            os.remove(TEMP_CALIB_FILE)
+        except: pass
 
+    auto_url = load_temp_url()
+    default_video = ""
+    if auto_url:
+        default_video = auto_url
+    else:
+        try:
+            base = os.path.splitext(os.path.basename(default_img))[0]
+            pot_vid = VIDEO_DIR / f"{base}.mp4"
+            if pot_vid.exists(): 
+                default_video = make_relative(str(pot_vid))
+            else:
+                default_video = make_relative(default_img)
+        except: 
+            default_video = default_img
 
-def interactive_mode():
-    """Runs interactive mode (with console prompts)."""
-    
-    # === 1.Parsing arguments from main.py ===
-    parser = argparse.ArgumentParser(description='Interactive Parking Configuration Adder')
-    parser.add_argument('--default_name', type=str, default='',
-                        help='Default lot name derived from the selected image file.')
-    parser.add_argument('--image_path', type=str, default='',
-                        help='Path to the selected image file, used as default.')
+    ent_name = create_field("Nazwa systemowa (np. parking_tyl):", default_name)
+    ent_width = create_field("Szerokość miejsca (px):", calib_w)
+    ent_height = create_field("Wysokość miejsca (px):", calib_h)
+    ent_thresh = create_field("Próg detekcji (Domyślnie 900):", "900")
+    ent_video = create_field("Źródło wideo (Plik .mp4 lub URL):", default_video, "video_picker")
+
+    def on_save():
+        try:
+            name = ent_name.get().strip()
+            if not name: messagebox.showerror("Błąd", "Brak nazwy!"); return
+            
+            if name in existing_names:
+                if not messagebox.askyesno("Konflikt", f"'{name}' już istnieje. Nadpisać?"): return
+            
+            result.update({
+                "name": name,
+                "w": int(ent_width.get()),
+                "h": int(ent_height.get()),
+                "t": int(ent_thresh.get()),
+                "vid": ent_video.get().strip(),
+                "saved": True
+            })
+            root.destroy()
+        except ValueError: messagebox.showerror("Błąd", "Wymiary muszą być liczbami!")
+
+    tk.Button(root, text="ZAPISZ KONFIGURACJĘ", font=("Segoe UI", 12, "bold"), bg=COLOR_SUCCESS, fg="white", command=on_save).pack(pady=30, fill="x", padx=40)
+    root.mainloop()
+    return result
+
+def main():
+    """Główny punkt wejścia modułu. Zarządza parsowaniem argumentów i procesem zapisu."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--default_name', type=str, default='new_parking')
+    parser.add_argument('--image_path', type=str, default='')
     args = parser.parse_args()
-    
-    # Use and clean passed arguments
-    initial_lot_name = args.default_name.lower().replace('.', '_').replace(' ', '_')
-    initial_image_path = args.image_path
-    # ==========================================
-    
+
     config = load_or_create_config()
-    print("Available parking lot configurations:")
-    for n in config["parking_lots"].keys():
-        # Filter 'default' from displayed list
-        if n != 'default': 
-            print(f"  - {n}")
-
-    print("\n=== Adding New Parking Lot Configuration ===")
+    existing_names = list(config.get("parking_lots", {}).keys())
     
-    # === AUTOMATIC CALIBRATION DATA RETRIEVAL ===
-    default_width = 107
-    default_height = 48
-    
-    calibrated_width, calibrated_height = read_and_clean_calibration_data()
-    
-    if calibrated_width is not None and calibrated_height is not None:
-        default_width = calibrated_width
-        default_height = calibrated_height
-    
-    print(f"--- Dimensions to enter (default: {default_width}x{default_height}px) ---")
-    # =========================================
-    
-    # === 2. USE DEFAULT NAME (lot_name) ===
-    # Use default name passed from main.py if it exists
-    lot_name_prompt = f"Enter the new parking lot name (default '{initial_lot_name}'): " if initial_lot_name else "Enter the new parking lot name (e.g. 'mall_parking'): "
-    
-    lot_name = input(lot_name_prompt).strip()
-    if not lot_name:
-        lot_name = initial_lot_name # Use default name if user pressed Enter
+    data = gui_config_form(args.default_name, args.image_path, existing_names)
 
-    if not lot_name: # If still empty, ask again
-        print("Parking lot name cannot be empty.")
-        return 
-
-    if lot_name in config["parking_lots"]:
-        overwrite = input(f"Configuration '{lot_name}' already exists. Overwrite? (y/n): ").strip().lower()
-        if overwrite != 'y':
-            print("Cancelled.")
-            return
-
-    # Use lot_name as default display name
-    display_name = input(f"Enter display name (default '{lot_name.replace('_', ' ').title()}'): ").strip()
-    if not display_name:
-        display_name = lot_name.replace('_', ' ').title()
-
-    try:
-        rect_width = int(input(f"Parking space rectangle width (default {default_width}): ") or str(default_width))
-        rect_height = int(input(f"Parking space rectangle height (default {default_height}): ") or str(default_height))
-        threshold = int(input("Classification threshold (default 900): ") or "900")
-    except ValueError:
-        print("Invalid numeric values. Using defaults.")
-        rect_width, rect_height, threshold = default_width, default_height, 900
-        
-    # === 3. Use default image path ===
-
-    image_path_prompt = f"Path to reference image (default '{initial_image_path}'): " if initial_image_path else "Path to reference image: "
-    
-    input_image_path = input(image_path_prompt).strip()
-    if not input_image_path:
-        input_image_path = initial_image_path
-        
-    video_path = input("Path to video file or IP camera URL (e.g. rtsp://user:pass@ip:port/stream): ").strip()
-
-    # Call with valid and enriched data
-    create_parking_lot(config, lot_name, rect_width, rect_height, threshold, input_image_path, video_path)
-
+    if data["saved"]:
+        create_parking_lot(config, data["name"], data["w"], data["h"], data["t"], args.image_path, data["vid"])
+    else:
+        sys.exit(1)
 
 if __name__ == "__main__":
-    interactive_mode()
+    main()

@@ -8,6 +8,7 @@
 numpy
 opencv-contrib-python
 opencv-python
+pillow
 
 # Wsparcie dla YouTube
 yt-dlp

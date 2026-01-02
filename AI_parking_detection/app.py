@@ -1,368 +1,381 @@
 import cv2
 import argparse
 import time
-from src.parking_classifier import ParkClassifier
-from src.coordinate_denoter import CoordinateDenoter
-from src.config_manager import ConfigManager
 import os
 import numpy as np
-import subprocess
-import math
-from src.utils import list_files_three_columns, IMG_DIR, get_direct_youtube_url
+import sys
+import json
+import tkinter as tk 
+from src.parking_classifier import ParkClassifier
+from src.config_manager import ConfigManager
+from src.utils import IMG_DIR, get_direct_youtube_url, OverlayConsole
+
+# Ścieżka bazowa projektu
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, "config", "parking_config.json")
 
 class ParkingMonitor:
-    """Generic parking monitoring application"""
-    
     def __init__(self, parking_lot_name: str = "default"):
+        self.lot_name = parking_lot_name
         self.config_manager = ConfigManager()
         self.lot_config = self.config_manager.get_parking_lot_config(parking_lot_name)
+        
+        # --- FIX: Naprawa ścieżki do pliku pozycji ---
+        pos_file = self.lot_config["positions_file"]
+        if not os.path.isabs(pos_file):
+            pos_file = os.path.join(BASE_DIR, pos_file)
+            
         self.processing_params = self.config_manager.get_processing_params()
         
-        # Initialize classifier
+        # --- ZAPAMIĘTANIE WARTOŚCI DOMYŚLNYCH (DLA RESETU) ---
+        self.default_threshold = self.lot_config["threshold"]
+        self.current_threshold = self.default_threshold # Aktualny próg
+        
+        # Kopiujemy słownik, żeby zmiany na żywo nie nadpisały "backupu"
+        self.default_params = self.processing_params.copy()
+        
         self.classifier = ParkClassifier(
-            car_park_positions_path=self.lot_config["positions_file"],
+            car_park_positions_path=pos_file,
             rect_width=self.lot_config["rect_width"],
             rect_height=self.lot_config["rect_height"],
             processing_params=self.processing_params
         )
-        
-        print(f"Initialized monitor for: {self.lot_config['name']}")
-        print(f"Total parking spaces: {len(self.classifier.car_park_positions)}")
-    
+        print(f"Monitor: {self.lot_config['name']} | Miejsca: {len(self.classifier.car_park_positions)}")
+
+    def get_screen_resolution(self):
+        try:
+            root = tk.Tk(); root.withdraw()
+            w, h = root.winfo_screenwidth(), root.winfo_screenheight()
+            root.destroy(); return w, h
+        except: return 1920, 1080 
+
+    def calculate_optimal_scale(self, frame_w, frame_h):
+        screen_w, screen_h = self.get_screen_resolution()
+        target_w, target_h = screen_w - 60, screen_h - 120
+        return min(target_w / frame_w, target_h / frame_h, 1.0)
 
     def apply_overrides(self, args):
-        """Override processing parameters from CLI"""
-        if args.blur_kernel:
-            self.processing_params["gaussian_blur_kernel"] = args.blur_kernel
-        if args.blur_sigma:
-            self.processing_params["gaussian_blur_sigma"] = args.blur_sigma
-        if args.threshold_block:
-            self.processing_params["adaptive_threshold_block_size"] = args.threshold_block
-        if args.threshold_c:
-            self.processing_params["adaptive_threshold_c"] = args.threshold_c
-        if args.median_blur_kernel:
-            self.processing_params["median_blur_kernel"] = args.median_blur_kernel
-        if args.dilate_kernel:
-            self.processing_params["dilate_kernel_size"] = args.dilate_kernel
-        if args.dilate_iterations:
-            self.processing_params["dilate_iterations"] = args.dilate_iterations
-
-        # Reinitialize classifier with updated parameters
+        if args.blur_kernel: self.processing_params["gaussian_blur_kernel"] = args.blur_kernel
+        if args.blur_sigma: self.processing_params["gaussian_blur_sigma"] = args.blur_sigma
+        if args.threshold_block: self.processing_params["adaptive_threshold_block_size"] = args.threshold_block
+        if args.threshold_c: self.processing_params["adaptive_threshold_c"] = args.threshold_c
         self.classifier.processing_params = self.processing_params
-
-    def _scale_frame(self, frame: np.ndarray, scale_percent: int) -> np.ndarray:
-        """Helper function for scaling the image."""
-        if scale_percent == 100 or scale_percent <= 0:
-            return frame
         
-        width = int(frame.shape[1] * scale_percent / 100)
-        height = int(frame.shape[0] * scale_percent / 100)
-        dim = (width, height)
-        # Use INTER_AREA for downscaling (better quality)
-        return cv2.resize(frame, dim, interpolation=cv2.INTER_AREA)
+        # Aktualizujemy też defaulty, jeśli użytkownik podał flagi przy starcie
+        self.default_params = self.processing_params.copy()
 
+    # --- FUNKCJE TUNINGU ---
+    def nothing(self, x): pass
 
-    def monitor_video(self, video_source: str = None, output_path: str = None, scale_percent: int = 100, duration_minutes: float = 0.0):
-        """Monitor parking from video source, with optional time limit"""
-        if video_source is None:
+    def setup_trackbars(self, win_name="TUNING"):
+        cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(win_name, 400, 350)
+        
+        # 1. Próg detekcji (Używamy self.current_threshold)
+        cv2.createTrackbar("Threshold (Pix)", win_name, self.current_threshold, 2000, self.nothing)
+        
+        # 2. Block Size
+        curr_block = self.processing_params.get("adaptive_threshold_block_size", 25)
+        cv2.createTrackbar("Block Size", win_name, curr_block, 100, self.nothing)
+        
+        # 3. Constant C
+        curr_c = self.processing_params.get("adaptive_threshold_c", 15)
+        cv2.createTrackbar("Constant C", win_name, curr_c, 50, self.nothing)
+        
+        # 4. Blur Kernel
+        curr_blur = self.processing_params.get("gaussian_blur_kernel", [5, 5])[0]
+        cv2.createTrackbar("Blur Kernel", win_name, curr_blur, 30, self.nothing)
+
+    def get_trackbar_values(self, win_name="TUNING"):
+        try:
+            th = cv2.getTrackbarPos("Threshold (Pix)", win_name)
+            bs = cv2.getTrackbarPos("Block Size", win_name)
+            c = cv2.getTrackbarPos("Constant C", win_name)
+            bk = cv2.getTrackbarPos("Blur Kernel", win_name)
+            
+            # Walidacja (nieparzyste > 1)
+            if bs < 3: bs = 3
+            if bs % 2 == 0: bs += 1
+            
+            if bk < 1: bk = 1
+            if bk % 2 == 0: bk += 1
+            
+            return th, bs, c, bk
+        except:
+            return self.current_threshold, 25, 15, 5
+
+    def reset_trackbars(self, win_name="TUNING"):
+        """Przywraca suwaki do pozycji startowych."""
+        def_block = self.default_params.get("adaptive_threshold_block_size", 25)
+        def_c = self.default_params.get("adaptive_threshold_c", 15)
+        def_blur = self.default_params.get("gaussian_blur_kernel", [5, 5])[0]
+        
+        try:
+            cv2.setTrackbarPos("Threshold (Pix)", win_name, self.default_threshold)
+            cv2.setTrackbarPos("Block Size", win_name, def_block)
+            cv2.setTrackbarPos("Constant C", win_name, def_c)
+            cv2.setTrackbarPos("Blur Kernel", win_name, def_blur)
+            print("[INFO] Zresetowano parametry do domyślnych.")
+        except: pass
+
+    def save_current_config(self, threshold, block, c, blur):
+        """Zapisuje parametry suwaków do pliku JSON w odpowiednie miejsca."""
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 1. Zapis Threshold do konkretnego parkingu ("rynek")
+            if self.lot_name in data["parking_lots"]:
+                data["parking_lots"][self.lot_name]["threshold"] = threshold
+                print(f"[SAVE] Zapisano threshold={threshold} dla parkingu '{self.lot_name}'")
+            
+            # 2. Zapis reszty parametrów globalnie (lub per-parking jeśli wolisz)
+            data["processing_params"]["adaptive_threshold_block_size"] = block
+            data["processing_params"]["adaptive_threshold_c"] = c
+            data["processing_params"]["gaussian_blur_kernel"] = [blur, blur]
+            print(f"[SAVE] Zapisano parametry przetwarzania (Block={block}, C={c}, Blur={blur})")
+            
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4)
+            return True
+        except Exception as e:
+            print(f"Błąd zapisu: {e}")
+            return False
+
+    def monitor_video(self, video_source: str = None, output_path: str = None, user_scale_percent: int = 100, duration_minutes: float = 0.0):
+        if video_source is None: 
             video_source = self.lot_config["video_source"]
         
-        # 💡 NOWA LOGIKA: Check and get direct URL from YouTube
-        final_video_source = video_source
-        if "youtube.com" in video_source or "youtu.be" in video_source:
-             final_video_source = get_direct_youtube_url(video_source) # <-- Użycie z utils.py
-
-        # KEY CHANGE: Try using FFMPEG backend
-        cap = cv2.VideoCapture(final_video_source, cv2.CAP_FFMPEG)
-        if not cap.isOpened():
-            print(f"Warning: Could not open video source/IP stream using FFMPEG. Trying default backend...")
-            
-            # Try with default backend
-            cap = cv2.VideoCapture(final_video_source) # <-- Using final_video_source
-            
-            if not cap.isOpened():
-                print(f"Error: Could not open video source/IP stream: {final_video_source}")
-                return
+        if "http" in video_source and ("youtube.com" in video_source or "youtu.be" in video_source):
+             print(f"[INFO] Pobieranie URL strumienia z: {video_source}")
+             video_source = get_direct_youtube_url(video_source)
         
-        # Writer must be configured for SCALED output image
+        elif not os.path.exists(video_source):
+            potential_path = os.path.join(BASE_DIR, video_source)
+            if os.path.exists(potential_path):
+                video_source = potential_path
+            else:
+                print(f"[ERROR] Nie znaleziono pliku wideo: {video_source}")
+
+        cap = cv2.VideoCapture(video_source, cv2.CAP_FFMPEG)
+        if not cap.isOpened(): cap = cv2.VideoCapture(video_source)
+        if not cap.isOpened(): 
+            print(f"[FATAL] Nie można otworzyć źródła wideo: {video_source}")
+            return
+        
+        orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        if user_scale_percent == 100: scale_factor = self.calculate_optimal_scale(orig_w, orig_h)
+        else: scale_factor = user_scale_percent / 100.0
+
+        disp_w, disp_h = int(orig_w * scale_factor), int(orig_h * scale_factor)
+
+        window_name = f"Monitoring - {self.lot_config['name']}"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, disp_w, disp_h)
+        cv2.moveWindow(window_name, 30, 30)
+
+        # --- ZMIENNA STANU TUNINGU ---
+        tuning_active = False # Domyślnie ukryte
+        tuning_win = "TUNING"
+        # -----------------------------
+
+        console = OverlayConsole(title=f"LOG: {self.lot_config['name']}", visible_by_default=False)
+        sys.stdout = console 
+        
+        ui_state = {'should_quit': False, 'btn_rect': (0,0,0,0)}
+
+        def mouse_callback(event, x, y, flags, param):
+            console.handle_mouse(event, x, y, flags)
+            if event == cv2.EVENT_LBUTTONDOWN:
+                bx, by, bw, bh = param['btn_rect']
+                if bx <= x <= bx + bw and by <= y <= by + bh: param['should_quit'] = True
+        
+        cv2.setMouseCallback(window_name, mouse_callback, ui_state)
+
         writer = None
         if output_path:
-            # If user provided a filename without extension, default to .mp4 and place
-            # it under the `video_tests/` folder. If they provided a path with an
-            # extension, use it as-is.
-            #
-            # Examples:
-            #  - "result" -> "video_tests/result.mp4"
-            #  - "result.mp4" -> "result.mp4" (used as provided)
-            #  - "results/out.mov" -> "results/out.mov" (used as provided)
-            base_output = output_path
-            filename = os.path.basename(base_output)
-            name, ext = os.path.splitext(filename)
-
-            if ext:
-                final_output_path = base_output
-            else:
-                final_output_path = os.path.join("video_tests", base_output + ".mp4")
-
-            # Ensure output directory exists
-            out_dir = os.path.dirname(final_output_path) or "video_tests"
-            os.makedirs(out_dir, exist_ok=True)
-
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            fps = cap.get(cv2.CAP_PROP_FPS)
-
-            # Writer dimensions are scaled
-            width_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-            width_out = int(width_orig * scale_percent / 100)
-            height_out = int(height_orig * scale_percent / 100)
-
-            writer = cv2.VideoWriter(final_output_path, fourcc, fps, (width_out, height_out))
+            writer = cv2.VideoWriter(output_path, fourcc, 25.0, (disp_w, disp_h))
         
-        print("Controls: 'q' quit | 's' save frame | 'p' pause/resume | SPACE step frame")
+        print("System ON.")
+        print("SKRÓTY: 'H'-Logi | 'Ctrl+T'-Tuning | 'Q'-Wyjście")
         
-        # TIME LIMIT LOGIC INITIALIZATION
         start_time = time.time()
-        # Set a finite end time only if duration_minutes > 0, otherwise it's infinity
         end_time = start_time + (duration_minutes * 60) if duration_minutes > 0.0 else float('inf')
-        
         paused = False
         frame_count = 0
         
-        while True:
-            # Check for time limit only if duration_minutes > 0.0
-            if duration_minutes > 0.0 and time.time() > end_time:
-                print(f"\nTime limit of {duration_minutes} minutes reached. Stopping video processing.")
-                break
+        try:
+            while True:
+                if ui_state['should_quit'] or (duration_minutes > 0 and time.time() > end_time): break
                 
-            if not paused:
-                ret, frame = cap.read()
-                if not ret:
-                    print("End of video or failed to read frame")
-                    break
-                frame_count += 1
-            
-            # KEY CHANGE: Processing is done on the ORIGINAL, large 'frame'
-            processed_frame = self.classifier.implement_process(frame)
-            annotated_frame, stats = self.classifier.classify(
-                image=frame.copy(),  # Using original frame for drawing
-                processed_image=processed_frame,  # Using originally processed frame
-                threshold=self.lot_config["threshold"]
-            )
-            
-            # Scale only for display/output
-            display_frame = self._scale_frame(annotated_frame, scale_percent)
+                # --- LOGIKA TUNINGU ---
+                if tuning_active:
+                    try:
+                        # Odczyt suwaków
+                        th, bs, c, bk = self.get_trackbar_values(tuning_win)
+                        
+                        # Aktualizacja parametrów na żywo
+                        self.classifier.processing_params["adaptive_threshold_block_size"] = bs
+                        self.classifier.processing_params["adaptive_threshold_c"] = c
+                        self.classifier.processing_params["gaussian_blur_kernel"] = [bk, bk]
+                        self.current_threshold = th # Zapisz aktualny próg do klasy
+                    except:
+                        tuning_active = False
+                
+                current_thresh_limit = self.current_threshold
+                # ----------------------
 
-            # Display information
-            info_text = f"Frame: {frame_count}"
-            if duration_minutes > 0.0:
-                time_remaining = max(0, int(end_time - time.time()))
-                info_text += f" | Time Left: {time_remaining // 60:02d}:{time_remaining % 60:02d}"
-
-            
-            (text_w, text_h), baseline = cv2.getTextSize(info_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-
-        
-            cv2.rectangle(display_frame, 
-                          (5, 5), # Górny lewy róg tła (z marginesem 5px)
-                          (10 + text_w, 15 + text_h), # Dolny prawy róg tła
-                          (0, 0, 0), -1) # Kolor czarny, wypełniony
-
-            # 3. Rysowanie białego tekstu
-            # Używamy (10, 20) jako stałej pozycji bazowej tekstu (X=10, Y=20)
-            cv2.putText(display_frame, info_text, 
-                        (10, 20), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            # ========================================================
-            
-            cv2.imshow(f"Parking Monitor - {self.lot_config['name']}", display_frame)
-            
-            if writer:
-                writer.write(display_frame) # Zapisujemy skalowany obraz
-            
-            """if frame_count % 30 == 0:
-                print(f"Frame {frame_count}: {stats['empty_spaces']}/{stats['total_spaces']} free "
-                      f"({stats['occupancy_rate']:.1f}% occupied)")
-            """
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord('s'):
-                timestamp = time.strftime("%Y%m%d_%H%M%S")
-                filename = f"parking_snapshot_{timestamp}.jpg"
-                folder = 'data/results'
-                os.makedirs(folder, exist_ok=True)
-                filepath = os.path.join(folder, filename)
-                cv2.imwrite(filepath, display_frame)
-                print(f"Saved snapshot: {filepath}")
-            elif key == ord('p'):
-                paused = not paused
-                print("Paused" if paused else "Resumed")
-            elif key == ord(' ') and paused:
-                # IF paused and step, read a new frame and continue with it
-                ret, frame_step = cap.read() 
-                if ret:
-                    frame = frame_step 
+                if not paused:
+                    ret, frame = cap.read()
+                    if not ret: 
+                        print("[INFO] Pętla wideo...")
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        continue
                     frame_count += 1
+                
+                processed = self.classifier.implement_process(frame)
+                annotated, stats = self.classifier.classify(frame.copy(), processed, current_thresh_limit)
+                
+                display_frame = cv2.resize(annotated, (disp_w, disp_h), interpolation=cv2.INTER_AREA)
+
+                # INFO BAR
+                info_text = f"Klatka: {frame_count} | Wolne: {stats['empty_spaces']}/{len(self.classifier.car_park_positions)}"
+                if tuning_active:
+                    info_text += " [TUNING: W=Zapisz]"
+                
+                (tw, th_txt), _ = cv2.getTextSize(info_text, 0, 0.6, 1)
+                cv2.rectangle(display_frame, (5, disp_h-35), (15+tw, disp_h-5), (0,0,0), -1)
+                cv2.putText(display_frame, info_text, (10, disp_h-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1)
+
+                # PRZYCISK ZAMKNIJ
+                btn_w, btn_h = 100, 30
+                btn_x, btn_y = disp_w - btn_w - 10, 10
+                ui_state['btn_rect'] = (btn_x, btn_y, btn_w, btn_h)
+                
+                cv2.rectangle(display_frame, (btn_x, btn_y), (btn_x+btn_w, btn_y+btn_h), (0,0,180), -1)
+                cv2.rectangle(display_frame, (btn_x, btn_y), (btn_x+btn_w, btn_y+btn_h), (200,200,200), 1)
+                cv2.putText(display_frame, "WYJSCIE", (btn_x+15, btn_y+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+
+                console.draw(display_frame) 
+
+                cv2.imshow(window_name, display_frame)
+                
+                if tuning_active:
+                    preview = cv2.resize(processed, (400, 300))
+                    cv2.imshow(tuning_win, preview)
+
+                if writer: writer.write(display_frame)
+                
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'): break
+                elif key == ord('h'): 
+                    console.toggle()
+                elif key == ord('p'): 
+                    paused = not paused
+                    print("PAUZA" if paused else "WZNOWIONO")
+                
+                # --- PRZEŁĄCZANIE TUNINGU (Ctrl+T) ---
+                elif key == 20: # Kod ASCII dla Ctrl+T
+                    tuning_active = not tuning_active
+                    if tuning_active:
+                        self.setup_trackbars(tuning_win)
+                        print("[INFO] Tuning włączony. Wciśnij 'W' aby zapisać.")
+                    else:
+                        try: cv2.destroyWindow(tuning_win)
+                        except: pass
+                        print("[INFO] Tuning ukryty")
+                
+                # --- ZAPIS (W) - Tylko gdy Tuning aktywny ---
+                elif tuning_active and key == ord('w'):
+                    th, bs, c, bk = self.get_trackbar_values(tuning_win)
+                    if self.save_current_config(th, bs, c, bk):
+                        pass # Komunikat jest wewnątrz save_current_config
+                    else:
+                        print("[ERROR] Błąd zapisu")
+                
+                elif tuning_active and key == ord('r'):
+                    self.reset_trackbars(tuning_win)
         
-        cap.release()
-        if writer:
-            writer.release()
-        cv2.destroyAllWindows()
-    
+        except KeyboardInterrupt: pass
+        finally:
+            sys.stdout = sys.__stdout__
+            cap.release()
+            if writer: writer.release()
+            cv2.destroyAllWindows()
+
     def monitor_image(self, image_path: str = None, scale_percent: int = 100):
-        """Monitor parking from static image"""
-        if image_path is None:
-            image_path = self.lot_config["source_image"]
-        
+        if image_path is None: image_path = self.lot_config["source_image"]
+        if not os.path.exists(image_path):
+            potential = os.path.join(BASE_DIR, image_path)
+            if os.path.exists(potential): image_path = potential
+
         image = cv2.imread(image_path)
-        if image is None:
-            print(f"Error: Could not load image: {image_path}")
-            return
+        if image is None: print(f"[ERROR] Nie można wczytać obrazu: {image_path}"); return
         
-        # KLUCZOWA ZMIANA: Przetwarzanie i klasyfikacja na ORYGINALNYM obrazie
-        processed_image = self.classifier.implement_process(image)
-        annotated_image, stats = self.classifier.classify(
-            image=image.copy(),
-            processed_image=processed_image,
-            threshold=self.lot_config["threshold"]
-        )
+        orig_h, orig_w = image.shape[:2]
+        scale_factor = self.calculate_optimal_scale(orig_w, orig_h) if scale_percent == 100 else scale_percent/100.0
+        disp_w, disp_h = int(orig_w * scale_factor), int(orig_h * scale_factor)
+
+        processed = self.classifier.implement_process(image)
+        annotated, stats = self.classifier.classify(image.copy(), processed, self.lot_config["threshold"])
+        display = cv2.resize(annotated, (disp_w, disp_h), interpolation=cv2.INTER_AREA)
         
-        # Scale only for display/output
-        display_image = self._scale_frame(annotated_image, scale_percent)
+        console = OverlayConsole(title="ANALIZA OBRAZU", visible_by_default=True)
+        sys.stdout = console
+        print(f"Wolne: {stats['empty_spaces']} | Zajęte: {stats['occupied_spaces']}")
         
-        print("\nParking Statistics:")
-        print(f"Total spaces: {stats['total_spaces']}")
-        print(f"Empty spaces: {stats['empty_spaces']}")
-        print(f"Occupied spaces: {stats['occupied_spaces']}")
-        print(f"Occupancy rate: {stats['occupancy_rate']:.1f}%")
+        win_name = f"Image - {self.lot_config['name']}"
+        cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(win_name, disp_w, disp_h)
         
-        cv2.imshow(f"Parking Analysis - {self.lot_config['name']}", display_image)
-        print("Press any key to exit...")
-        cv2.waitKey(0)
+        def mouse_cb(event, x, y, flags, param): console.handle_mouse(event, x, y, flags)
+        cv2.setMouseCallback(win_name, mouse_cb)
+
+        while True:
+            frame_copy = display.copy()
+            console.draw(frame_copy)
+            cv2.imshow(win_name, frame_copy)
+            k = cv2.waitKey(20) & 0xFF
+            if k == ord('q'): break
+            elif k == ord('h'): console.toggle()
+        
+        sys.stdout = sys.__stdout__
         cv2.destroyAllWindows()
 
 def main():
-    # Using RawTextHelpFormatter allows for better text formatting and line breaks in the help message.
-    parser = argparse.ArgumentParser(
-        description='🚗 IPCV-based Parking Space Monitoring and Analysis Tool.',
-        formatter_class=argparse.RawTextHelpFormatter,
-        epilog="""
-Usage Examples:
-python app.py -l block -v 0                                      # Monitor using system camera (index 0).
-python app.py --lot Japan --mode video --output result.mp4       # Analyze video file and save output.
-python app.py -L                                                 # List available parking lot configurations.
-python app.py -l default --image data/source/img/default.png     # Analyze a static image with default parameters.
-python app.py -l block --threshold_c 16 --threshold_block 11     # Dynamically change threshold parameters (tuning).
-"""
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--lot', '-l', default='default')
+    parser.add_argument('--mode', '-m', choices=['video', 'image'], default='video')
+    parser.add_argument('--video', '-v', default=None)
+    parser.add_argument('--image', '-i', default=None)
+    parser.add_argument('--output', '-o', default=None)
+    parser.add_argument('--scale_percent', type=int, default=100) 
+    parser.add_argument('--duration_minutes', '-t', type=float, default=0.0)
     
-    # ----------------------------------------------------
-    # GROUP 1: CONFIGURATION AND OPERATION MODE
-    # ----------------------------------------------------
-    config_group = parser.add_argument_group('🛠️ Configuration and Operation Mode')
+    # Tuning domyślnie wyłączony, włączany skrótem Ctrl+T
+    parser.add_argument('--blur_kernel', type=int, nargs=2)
+    parser.add_argument('--blur_sigma', type=float)
+    parser.add_argument('--threshold_block', type=int)
+    parser.add_argument('--threshold_c', type=int)
     
-    config_group.add_argument('--list', '-L', action='store_true', 
-                              help='Lists all available parking lot configuration names (Locations) and exits.')
-    config_group.add_argument('--lot', '-l', default='default', 
-                              help='The name of the parking lot configuration (from config/parking\_config.json). Default: \'default\'.')
-    config_group.add_argument('--mode', '-m', choices=['video', 'image'], default='video', 
-                              help='Monitoring mode: \'video\' (stream/video file) or \'image\' (static image).')
-    
-    # ----------------------------------------------------
-    # GROUP 2: VIDEO/IMAGE SOURCES AND OUTPUT
-    # ----------------------------------------------------
-    source_group = parser.add_argument_group('🎥 Data Source and Output Options')
-    
-    source_group.add_argument('--video', '-v', default=None, 
-                              help='Video source: Path to a file, YouTube link, or system camera index (e.g., 0).')
-    source_group.add_argument('--image', '-i', default=None, 
-                              help='Path to a static image file (used in \'image\' mode).')
-    source_group.add_argument('--output', '-o', default=None, 
-                              help='Path to save the resulting output video file (e.g., result.mp4).')
-    
-    # ----------------------------------------------------
-    # GROUP 3: VISUAL AND TIME PARAMETERS
-    # ----------------------------------------------------
-    visual_group = parser.add_argument_group('⏱️ Display and Time Control')
-    
-    visual_group.add_argument('-t','--duration_minutes', type=float, default=0.0,
-                              help='Video recording duration in minutes. 0.0 means endless until stopped by user (q key).')
-    visual_group.add_argument('--scale_percent', type=int, default=100, 
-                              help='Scales the output image/video in percent (e.g., 50 for 50% size). Reduces display load.')
-
-    # ----------------------------------------------------
-    # GROUP 4: IPCV PARAMETER OVERRIDES (TUNING)
-    # ----------------------------------------------------
-    ipcv_group = parser.add_argument_group('⚙️ IPCV Parameter Overrides (Tuning)')
-    
-    ipcv_group.add_argument('--blur_kernel', type=int, nargs=2, 
-                            help='Gaussian blur kernel size (e.g., 3 3).')
-    ipcv_group.add_argument('--blur_sigma', type=float, 
-                            help='Gaussian blur sigma value.')
-    ipcv_group.add_argument('--threshold_block', type=int, 
-                            help='Adaptive threshold block size (must be odd, e.g., 11).')
-    ipcv_group.add_argument('--threshold_c', type=int, 
-                            help='Adaptive threshold C constant (usually between 1 and 20).')
-    ipcv_group.add_argument('--median_blur_kernel', type=int, 
-                            help='Median blur kernel size.')
-    ipcv_group.add_argument('--dilate_kernel', type=int, nargs=2, 
-                            help='Dilation kernel size (e.g., 3 3).')
-    ipcv_group.add_argument('--dilate_iterations', type=int, 
-                            help='Number of dilation iterations.')
-
     args = parser.parse_args()
-
-    config_manager = ConfigManager()
     
-    if args.list:
-        available_lots = config_manager.list_parking_lots()
+    try:
+        monitor = ParkingMonitor(args.lot)
+        monitor.apply_overrides(args)
         
-        names = [lot for lot in available_lots if (lot != 'default' and lot != 'empty_calibration')]
-        
-        print("\nList of available parking lot configurations (from config/parking\_config.json):")
-        
-        if names:
-            cols = 3
-            maxlen = max(len(n) for n in names) + 4
-            rows = math.ceil(len(names) / cols)
-
-            for r in range(rows):
-                row_str = ""
-                for c in range(cols):
-                    idx = r + c * rows
-                    if idx < len(names):
-                        entry = f"{names[idx]}"
-                        row_str += entry.ljust(maxlen)
-                print(row_str)
+        if args.mode == 'video':
+            monitor.monitor_video(args.video, args.output, args.scale_percent, args.duration_minutes) 
         else:
-            print("  No configurations available. Check your configuration files.")
+            monitor.monitor_image(args.image, args.scale_percent)
             
-        print("\n---")
-        
-        print("Source files for potential calibration (data/source/img):")
-        list_files_three_columns(IMG_DIR, pattern="*.png", cols=3)
-        
-        print("") 
-        return
-    
-    # Blocks above execute if --list is not provided
-    available_lots = config_manager.list_parking_lots()
-    
-    display_lots = [lot for lot in available_lots if lot != 'default']
-    print(f"Available parking lot configurations: {display_lots}")
-
-    monitor = ParkingMonitor(args.lot)
-    monitor.apply_overrides(args)
-
-    scale_percent = args.scale_percent
-    duration_minutes = args.duration_minutes
-
-    if args.mode == 'video':
-        monitor.monitor_video(args.video, args.output, scale_percent, duration_minutes) 
-    else:
-        monitor.monitor_image(args.image, scale_percent)
+    except Exception as e:
+        print(f"[CRITICAL ERROR] {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
