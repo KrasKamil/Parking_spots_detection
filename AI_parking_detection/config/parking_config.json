@@ -6,7 +6,7 @@
             "rect_height": 46,
             "threshold": 900,
             "positions_file": "data/parking_lots/default_positions",
-            "source_image": "data\\source\\img\\example.png",
+            "source_image": "data/source/img/example.png",
             "video_source": "data/source/video/carPark.mp4"
         },
         "empty_calibration": {
@@ -14,9 +14,9 @@
             "rect_width": 184,
             "rect_height": 122,
             "threshold": 900,
-            "positions_file": "data\\parking_lots\\empty_calibration_positions",
-            "source_image": "C:\\Users\\krask\\Documents\\Parking_recomendation\\Parking_spots_detection\\AI_parking_detection\\data\\source\\img\\chilmark_20260101_203608.png",
-            "video_source": "C:\\Users\\krask\\Documents\\Parking_recomendation\\Parking_spots_detection\\AI_parking_detection\\data\\source\\img\\chilmark_20260101_203608.png"
+            "positions_file": "data/parking_lots/empty_calibration_positions",
+            "source_image": "data/source/img/chilmark_20260101_203608.png",
+            "video_source": "data/source/img/chilmark_20260101_203608.png"
         },
         "blok": {
             "name": "Blok",
@@ -89,6 +89,15 @@
             "positions_file": "data/parking_lots/rynek_positions",
             "source_image": "data/source/img/RYNEK.png",
             "video_source": "https:/cdn01.aztv.pl/sesja_jaslo/sesja_jaslo.stream/playlist.m3u8?conn_id=0512061015"
+        },
+        "blok_TEST": {
+            "name": "blok_TEST",
+            "rect_width": 93,
+            "rect_height": 206,
+            "threshold": 900,
+            "positions_file": "data/parking_lots/blok_TEST_positions",
+            "source_image": "data/source/img/blok_4.png",
+            "video_source": "data/source/video/blok_4.mp4"
         }
     },
     "processing_params": {

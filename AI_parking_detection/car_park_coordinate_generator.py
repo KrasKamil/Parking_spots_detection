@@ -1,9 +1,3 @@
-"""
-Moduł generatora współrzędnych miejsc parkingowych.
-Umożliwia interaktywne definiowanie geometrii miejsc (prostokąty, wielokąty) 
-oraz wyznaczanie tras nawigacyjnych na obrazie referencyjnym.
-"""
-
 import cv2
 import pickle
 import sys
@@ -15,35 +9,17 @@ import time
 import tkinter as tk
 from src.utils import OverlayConsole, draw_text_pl
 
-# --- KONFIGURACJA ŚCIEŻEK ---
+# --- KONFIGURACJA ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 POLYGON_DIR = os.path.join(BASE_DIR, "data", "parking_lots")
 CONFIG_FILE = os.path.join(BASE_DIR, "config", "parking_config.json")
 TEMP_CALIB_FILE = os.path.join(BASE_DIR, "config", "temp_calibration.json")
 
 def get_positions_file(lot_name):
-    """
-    Tworzy i zwraca ścieżkę do pliku pozycji dla konkretnego parkingu.
-    
-    Args:
-        lot_name (str): Unikalna nazwa parkingu.
-        
-    Returns:
-        str: Pełna ścieżka do pliku binarnego z pozycjami.
-    """
     os.makedirs(POLYGON_DIR, exist_ok=True)
     return os.path.join(POLYGON_DIR, f"{lot_name}_positions")
 
 def load_config_dims(lot_name):
-    """
-    Ładuje zdefiniowane w konfiguracji wymiary domyślnego miejsca parkingowego.
-    
-    Args:
-        lot_name (str): Nazwa parkingu do wyszukania w JSON.
-        
-    Returns:
-        tuple: (Szerokość, Wysokość) prostokąta detekcji.
-    """
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -55,15 +31,6 @@ def load_config_dims(lot_name):
     return 50, 100
 
 def get_image_path_from_config(lot_name):
-    """
-    Pobiera ścieżkę do obrazu źródłowego z pliku konfiguracji.
-    
-    Args:
-        lot_name (str): Nazwa sekcji parkingu w pliku config.
-        
-    Returns:
-        str/None: Bezwzględna ścieżka do obrazu lub None w przypadku braku danych.
-    """
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -78,76 +45,53 @@ def get_image_path_from_config(lot_name):
     return None
 
 def get_screen_resolution():
-    """
-    Pobiera rozdzielczość bieżącego ekranu w celu optymalnego skalowania okna.
-    
-    Returns:
-        tuple: (Szerokość, Wysokość) ekranu w pikselach.
-    """
     try:
         root = tk.Tk(); root.withdraw()
         w, h = root.winfo_screenwidth(), root.winfo_screenheight()
         root.destroy(); return w, h
     except: return 1920, 1080
 
+# --- ZMIENNE STANU ---
+car_park_positions = []; route_points = []; temp_points = []
+mode = 'p'; console_ui = None; scale_factor = 1.0
+rect_w, rect_h = 50, 100; current_angle = 0; input_buffer = ""; is_editing_id = False
+edit_target_index = -1; blink_state = True; mouse_curr_x, mouse_curr_y = 0, 0
+should_exit = False
+last_action_time = 0 
+ui_force_hidden = False 
+show_help_panel = False 
+positions_file = "" 
+last_h_press_time = 0 
+
+# --- FUNKCJA LOGOWANIA (GWARANTOWANA) ---
 def log(msg):
-    """
-    Wysyła komunikat tekstowy do terminala systemowego oraz HUD-a konsoli w oknie.
-    
-    Args:
-        msg (str): Treść komunikatu do zalogowania.
-    """
+    """Loguje do terminala oraz do konsoli ekranowej."""
+    # 1. Terminal systemowy
     try: sys.__stdout__.write(f"{msg}\n")
     except: pass
+    
+    # 2. Konsola na ekranie (Overlay) - BEZPOŚREDNIO
     if console_ui:
         console_ui.write(str(msg))
 
 def get_next_id():
-    """
-    Oblicza kolejny dostępny numer identyfikacyjny (ID) dla nowego miejsca parkingowego.
-    
-    Returns:
-        str: Kolejna wolna liczba jako identyfikator.
-    """
     existing = {int(p['id']) for p in car_park_positions if str(p['id']).isdigit()}
     cand = 1
     while cand in existing: cand += 1
     return str(cand)
 
 def create_rotated_rect(center, w, h, angle):
-    """
-    Generuje wierzchołki prostokąta obróconego wokół środka o zadany kąt.
-    
-    Args:
-        center (tuple): Współrzędne (x, y) środka prostokąta.
-        w (int): Szerokość.
-        h (int): Wysokość.
-        angle (float): Kąt obrotu w stopniach.
-        
-    Returns:
-        list: Lista czterech punktów (x, y) stanowiących narożniki.
-    """
     cx, cy = center; theta = np.radians(angle); cos_a, sin_a = np.cos(theta), np.sin(theta)
     hw, hh = w/2, h/2
     corners = [(-hw,-hh), (hw,-hh), (hw,hh), (-hw,hh)]
     return [(int(cx + px*cos_a - py*sin_a), int(cy + px*sin_a + py*cos_a)) for px, py in corners]
 
 def save_data(filepath):
-    """
-    Zapisuje zdefiniowane pozycje i punkty trasy do pliku binarnego.
-    
-    Args:
-        filepath (str): Ścieżka docelowa pliku .pickle.
-    """
     data = {'car_park_positions': car_park_positions, 'route_points': route_points}
     with open(filepath, 'wb') as f: pickle.dump(data, f)
     log(f"[SUCCESS] Zapisano {len(car_park_positions)} miejsc.")
 
 def mouse_events(event, x, y, flags, params):
-    """
-    Callback obsługujący interakcje myszy (LPM, PPM, Rolka) w oknie edytora.
-    Zarządza dodawaniem, usuwaniem i edycją punktów w zależności od trybu pracy.
-    """
     global temp_points, is_editing_id, edit_target_index, input_buffer, mouse_curr_x, mouse_curr_y, current_angle
     global car_park_positions, route_points, should_exit, last_action_time, ui_force_hidden, show_help_panel, mode, rect_w, rect_h
     
@@ -245,10 +189,6 @@ def mouse_events(event, x, y, flags, params):
             temp_points = []; log("[-] Wyczyszczono punkty")
 
 def main():
-    """
-    Główna funkcja inicjalizująca interfejs edytora.
-    Zarządza wczytywaniem obrazów, konfiguracją skali oraz pętlą renderowania grafiki.
-    """
     global mode, car_park_positions, route_points, console_ui, scale_factor, rect_w, rect_h, positions_file
     global is_editing_id, input_buffer, edit_target_index, blink_state, should_exit, last_action_time, ui_force_hidden, temp_points, show_help_panel, last_h_press_time
 
@@ -278,6 +218,7 @@ def main():
                         else: car_park_positions.append({'id':str(i+1), 'points':it[0], 'irregular':it[1]=='i'})
         except: pass
 
+    # POBIERANIE OBRAZU
     img_path = None
     if args.image: img_path = args.image
     if not img_path and current_lot_name != "empty_calibration": img_path = get_image_path_from_config(current_lot_name)
@@ -305,9 +246,12 @@ def main():
     mode = args.mode
     title = "KALIBRACJA" if mode=='c' else f"EDYTOR: {current_lot_name}"
     
+    # KONSOLA DOMYŚLNIE UKRYTA (False)
     console_ui = OverlayConsole(title=title, visible_by_default=False)
     if mode == 'c': console_ui.visible = False
     
+    # UWAGA: Usunąłem sys.stdout = console_ui, bo mamy funkcję log()!
+
     win = "Edytor"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(win, dw, dh)
@@ -318,6 +262,7 @@ def main():
     else: log("Witaj w edytorze! Wciśnij przycisk INFO (lewy górny róg) dla pomocy.")
 
     frame_cnt = 0
+
     while True:
         auto_hidden = (mode in ['t', 'p', 'i'] and (time.time() - last_action_time < 3.0))
         status_bars_visible = not ui_force_hidden
@@ -335,11 +280,12 @@ def main():
         def sc(p): return (int(p[0]*scale_factor), int(p[1]*scale_factor))
         def scp(pts): return np.array([sc(p) for p in pts], np.int32)
 
+        # RYSOWANIE
         if mode=='c':
             for p in temp_points: cv2.circle(frame, sc(p), 5, (0,0,255), -1)
             if len(temp_points)==2:
                 cv2.rectangle(frame, sc(temp_points[0]), sc(temp_points[1]), (255,0,0), 2)
-                draw_text_pl(frame, "Zapisz (ENTER)", (sc(temp_points[0])[0], sc(temp_points[0])[1]-10), 0.7, (0,255,0))
+                frame = draw_text_pl(frame, "Zapisz (ENTER)", (sc(temp_points[0])[0], sc(temp_points[0])[1]-10), 0.7, (0,255,0))
         else:
             if route_points:
                 srp = [sc(p) for p in route_points]
@@ -371,6 +317,7 @@ def main():
                 cv2.putText(frame, "EDYCJA ID:", (cx-110, cy-15), 0, 0.6, (200,200,200), 1)
                 cv2.putText(frame, f"{input_buffer}{'|' if blink_state else ''}", (cx-50, cy+25), 0, 1.2, (255,255,255), 3)
 
+        # === INTERFEJS ===
         if info_btn_visible:
             btn_ui_color = (0, 100, 0) if show_help_panel else ((30, 30, 30) if auto_hidden else (50, 50, 50))
             cv2.rectangle(frame, (10, 10), (80, 35), btn_ui_color, -1)
@@ -429,6 +376,7 @@ def main():
             text_x = dw - tw_hint - 20
             frame = draw_text_pl(frame, hint_text, (text_x, dh-30), 0.5, (180, 255, 180))
 
+        # RYSOWANIE KONSOLI
         if mode != 'c' and not ui_force_hidden:
             console_ui.draw(frame)
 
