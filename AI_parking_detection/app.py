@@ -145,12 +145,15 @@ class ParkingMonitor:
     def monitor_video(self, video_source: str = None, output_path: str = None, user_scale_percent: int = 100, duration_minutes: float = 0.0):
         if video_source is None: 
             video_source = self.lot_config["video_source"]
+            
+        if video_source.startswith("http") and "://" not in video_source:
+            video_source = video_source.replace(":/", "://")
         
         if "http" in video_source and ("youtube.com" in video_source or "youtu.be" in video_source):
              print(f"[INFO] Pobieranie URL strumienia z: {video_source}")
              video_source = get_direct_youtube_url(video_source)
         
-        elif not os.path.exists(video_source):
+        elif not video_source.startswith("http") and not os.path.exists(video_source):
             potential_path = os.path.join(BASE_DIR, video_source)
             if os.path.exists(potential_path):
                 video_source = potential_path

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Zestaw narzędzi pomocniczych do przetwarzania obrazu, obsługi polskich znaków 
 oraz interaktywnej konsoli systemowej wyświetlanej na klatkach wideo.
@@ -11,7 +12,14 @@ import cv2
 import numpy as np
 import time
 import math
+import re
 from PIL import Image, ImageDraw, ImageFont
+
+# Import biblioteki yt_dlp z obsługą błędu braku instalacji
+try:
+    import yt_dlp
+except ImportError:
+    yt_dlp = None
 
 if sys.platform.startswith('win'):
     try:
@@ -20,26 +28,11 @@ if sys.platform.startswith('win'):
     except AttributeError:
         pass
 
-IMG_DIR = os.path.join("data", "source", "img")
+IMG_DIR = os.path.join('data', 'source', 'img')
 
 def draw_text_pl(img, text, pos, font_scale, color, thickness=1):
     """
     Renderuje tekst na obrazie z pełną obsługą polskich znaków diakrytycznych.
-
-    Funkcja optymalizuje proces, używając standardowego rysowania OpenCV dla tekstów 
-    bez polskich znaków. W przypadku wykrycia znaków diakrytycznych, wykorzystuje 
-    bibliotekę PIL do renderowania czcionek TrueType.
-
-    Args:
-        img (np.ndarray): Obraz wejściowy w formacie BGR.
-        text (str): Tekst do wyświetlenia.
-        pos (tuple): Współrzędne (x, y) punktu wstawienia tekstu.
-        font_scale (float): Skala czcionki.
-        color (tuple/int): Kolor w formacie BGR lub wartość skali szarości.
-        thickness (int): Grubość tekstu (używana tylko w trybie fallback OpenCV).
-
-    Returns:
-        np.ndarray: Obraz z naniesionym tekstem.
     """
     x, y = int(pos[0]), int(pos[1])
     
@@ -50,7 +43,10 @@ def draw_text_pl(img, text, pos, font_scale, color, thickness=1):
         bgr_color = color
         rgb_color = (color[2], color[1], color[0])
 
-    if not any(char in text for char in "ąęćłńóśźżĄĘĆŁŃÓŚŹŻ"):
+    pl_chars = 'ąęćłńóśźżĄĘĆŁŃÓŚŹŻ'
+    has_pl = any(char in text for char in pl_chars)
+
+    if not has_pl:
         cv2.putText(img, text, (x, y + int(font_scale * 25)), 
                     cv2.FONT_HERSHEY_SIMPLEX, font_scale, bgr_color, thickness)
         return img
@@ -58,14 +54,14 @@ def draw_text_pl(img, text, pos, font_scale, color, thickness=1):
     try:
         img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
-        font_size = int(font_scale * 30)
+        f_size = int(font_scale * 30)
         
         font = None
-        if sys.platform.startswith("win"):
-            font_path = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arial.ttf")
-            if os.path.exists(font_path):
+        if sys.platform.startswith('win'):
+            f_path = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', 'arial.ttf')
+            if os.path.exists(f_path):
                 try: 
-                    font = ImageFont.truetype(font_path, font_size)
+                    font = ImageFont.truetype(f_path, f_size)
                 except: 
                     pass
         
@@ -79,17 +75,9 @@ def draw_text_pl(img, text, pos, font_scale, color, thickness=1):
         cv2.putText(img, text, (x, y + 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, bgr_color, thickness)
         return img
 
-def list_files_three_columns(folder, pattern="*.png", cols=3):
+def list_files_three_columns(folder, pattern='*.png', cols=3):
     """
     Wyświetla listę plików z folderu w trzech kolumnach w terminalu.
-
-    Args:
-        folder (str): Ścieżka do folderu z plikami.
-        pattern (str): Wzorzec rozszerzeń plików. Domyślnie "*.png".
-        cols (int): Liczba kolumn wyjściowych.
-
-    Returns:
-        list: Lista ścieżek do znalezionych plików.
     """
     files = sorted(glob.glob(os.path.join(folder, pattern)))
     if not files: 
@@ -97,49 +85,80 @@ def list_files_three_columns(folder, pattern="*.png", cols=3):
     names = [os.path.basename(p) for p in files]
     rows = math.ceil(len(names) / cols)
     
-    print("\nAvailable files:")
+    print('\nAvailable files:')
+    max_n = max(len(n) for n in names) if names else 0
+
     for r in range(rows):
-        row_str = ""
+        row_str = ''
         for c in range(cols):
             idx = r + c * rows
             if idx < len(names): 
-                row_str += f"[{idx+1:2d}] {names[idx]}".ljust(max(len(n) for n in names)+4)
+                item = '[{:2d}] {}'.format(idx+1, names[idx])
+                row_str += item.ljust(max_n + 4)
         print(row_str)
     return files
 
-def get_direct_youtube_url(youtube_url: str) -> str:
+def get_direct_youtube_url(youtube_url):
     """
-    Pozyskuje bezpośredni URL do strumienia wideo z serwisu YouTube.
-
-    Args:
-        youtube_url (str): Pełny adres URL do filmu lub transmisji.
-
-    Returns:
-        str: Bezpośredni link do strumienia lub oryginalny URL w przypadku błędu.
+    Pozyskuje bezpośredni URL do strumienia. 
+    Jeśli URL już prowadzi do .m3u8 lub .mp4, zwraca go bez zmian.
     """
+    if not youtube_url:
+        return youtube_url
+
+    # 1. Czyszczenie i naprawa formatu adresu
+    youtube_url = youtube_url.strip().replace('\\', '/')
+    # Napraw protokół (pilnuj, żeby po http: były dokładnie dwa slashe)
+    youtube_url = re.sub(r'^(https?:)/+', r'\1//', youtube_url)
+
+    url_lower = youtube_url.lower()
+    
+    # 2. Zabezpieczenie dla gotowych strumieni (np. Jasło .m3u8)
+    if '.m3u8' in url_lower or '.mp4' in url_lower:
+        print("[SUCCESS] Rozpoznano bezpośredni link do strumienia.")
+        return youtube_url
+
+    if yt_dlp is None:
+        return youtube_url
+
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best', 
+        'quiet': True,
+        'noplaylist': True,
+        'no_warnings': True
+    }
+
     try:
-        command = ['yt-dlp', '--get-url', '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', youtube_url]
-        return subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL).strip()
-    except: 
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+            video_data = info['entries'][0] if 'entries' in info else info
+            direct_url = video_data.get('url')
+            
+            final_url = None
+            # Jeśli URL prowadzi do strony YouTube, szukamy w dostępnych formatach
+            if not direct_url or 'youtube.com' in direct_url:
+                formats = video_data.get('formats', [])
+                for f in reversed(formats):
+                    if f.get('vcodec') != 'none' and f.get('ext') == 'mp4':
+                        final_url = f.get('url')
+                        break
+            else:
+                final_url = direct_url
+            
+            if final_url:
+                print("[SUCCESS] Pomyślnie załadowano bezpośredni link YouTube.")
+                return final_url
+            
+            return youtube_url
+    except Exception:
         return youtube_url
 
 class OverlayConsole:
     """
-    Graficzna konsola renderowana jako nakładka na obraz wideo w czasie rzeczywistym.
-
-    Klasa umożliwia logowanie komunikatów bezpośrednio na ekranie aplikacji OpenCV.
-    Obsługuje automatyczne przewijanie, historię logów oraz interaktywne przyciski.
+    Graficzna konsola renderowana jako nakładka na obraz wideo.
     """
 
-    def __init__(self, title="LOG SYSTEMOWY", max_lines=50, visible_by_default=False):
-        """
-        Inicjalizuje obiekt konsoli Overlay.
-
-        Args:
-            title (str): Tytuł wyświetlany w nagłówku konsoli.
-            max_lines (int): Maksymalna liczba przechowywanych linii w buforze.
-            visible_by_default (bool): Początkowy stan widoczności konsoli.
-        """
+    def __init__(self, title='LOG SYSTEMOWY', max_lines=50, visible_by_default=False):
         self.buffer = []
         self.title = title
         self.visible = visible_by_default
@@ -152,76 +171,60 @@ class OverlayConsole:
         self.mouse_y = 0
         self.btn_clear_rect = None 
         self.current_rect = None 
-        self.cwd = os.getcwd().replace("\\", "/")
+        self.cwd = os.getcwd().replace('\\', '/')
 
     def _shorten_path(self, text):
-        """Skraca ścieżki bezwzględne do relatywnych dla czytelności logów."""
+        """Bezpiecznie skraca ścieżki, ignorując URL-e."""
         if not text: 
-            return ""
+            return ''
+        
+        # Jeśli string zawiera ślady URL, nie dotykaj go w ogóle
+        if '://' in text or 'http:/' in text or 'https:/' in text:
+            return text
+
         try:
-            text_fixed = text.replace("\\", "/")
-            cwd_lower = self.cwd.lower()
-            text_lower = text_fixed.lower()
-            if cwd_lower in text_lower:
-                idx = text_lower.find(cwd_lower)
-                prefix = text_fixed[:idx]
-                suffix = text_fixed[idx + len(cwd_lower):]
-                if suffix.startswith("/"): 
+            t_fixed = text.replace('\\', '/')
+            cwd_l = self.cwd.lower()
+            t_l = t_fixed.lower()
+            if cwd_l in t_l:
+                idx = t_l.find(cwd_l)
+                suffix = t_fixed[idx + len(cwd_l):]
+                if suffix.startswith('/'): 
                     suffix = suffix[1:]
-                return f"{prefix}./{suffix}"
-            return text_fixed
+                return './{}'.format(suffix)
+            return t_fixed
         except: 
             return text
 
     def write(self, message):
-        """
-        Zapisuje wiadomość do bufora konsoli.
-
-        Args:
-            message (str): Treść komunikatu do zalogowania.
-        """
+        """Zapisuje wiadomość do bufora konsoli."""
         if message and message.strip():
-            short_msg = self._shorten_path(message.strip())
-            timestamp = time.strftime("%H:%M:%S")
-            self.buffer.append(f"[{timestamp}] {short_msg}")
+            msg = self._shorten_path(message.strip())
+            t_stamp = time.strftime('%H:%M:%S')
+            self.buffer.append('[{}] {}'.format(t_stamp, msg))
             self.scroll_offset = 0
             while len(self.buffer) > self.max_lines:
                 self.buffer.pop(0)
 
     def toggle(self):
-        """Przełącza stan widoczności konsoli (Ukryj/Pokaż)."""
         self.visible = not self.visible
 
     def clear(self):
-        """Czyści bufor logów i resetuje widok."""
         self.buffer = []
         self.scroll_offset = 0
 
-    def handle_mouse(self, event, x, y, flags):
-        """
-        Zarządza interakcjami myszy z panelem konsoli.
-
-        Args:
-            event: Typ zdarzenia OpenCV.
-            x (int): Współrzędna X kursora.
-            y (int): Współrzędna Y kursora.
-            flags: Flagi zdarzenia OpenCV.
-
-        Returns:
-            bool: True, jeśli zdarzenie zostało przechwycone przez konsolę.
-        """
+    def handle_mouse(self, event, x, y, flags, param=None):
         if not self.visible: 
             return False
-        self.mouse_x = x
-        self.mouse_y = y
+        self.mouse_x, self.mouse_y = x, y
         
-        is_hovering = False
+        is_h = False
         if self.current_rect:
             cx, cy, cw, ch = self.current_rect
             if cx <= x <= cx + cw and cy <= y <= cy + ch: 
-                is_hovering = True
+                is_h = True
 
-        if is_hovering:
+        if is_h:
             if event == cv2.EVENT_MOUSEWHEEL:
                 if flags > 0: 
                     self.scroll_offset = min(self.scroll_offset + 1, max(0, len(self.buffer) - 5))
@@ -238,68 +241,62 @@ class OverlayConsole:
         return False
 
     def draw(self, frame):
-        """
-        Renderuje graficzny interfejs konsoli na podanej klatce obrazu.
-
-        Args:
-            frame (np.ndarray): Klatka obrazu, na której ma zostać narysowana konsola.
-        """
         if not self.visible: 
             self.current_rect = None
             return
         
-        h, w, _ = frame.shape
-        start_x = max(0, w - self.width - 10)
+        h_f, w_f, _ = frame.shape
+        start_x = max(0, w_f - self.width - 10)
         start_y = 60 
         self.current_rect = (start_x, start_y, self.width, self.height)
         
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (start_x, start_y), (start_x + self.width, start_y + self.height), self.bg_color, -1)
-        header_h = 30
-        cv2.rectangle(overlay, (start_x, start_y), (start_x + self.width, start_y + header_h), (50, 50, 50), -1)
+        ov = frame.copy()
+        cv2.rectangle(ov, (start_x, start_y), (start_x + self.width, start_y + self.height), self.bg_color, -1)
+        h_h = 30
+        cv2.rectangle(ov, (start_x, start_y), (start_x + self.width, start_y + h_h), (50, 50, 50), -1)
         
         alpha = 0.85
-        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        cv2.addWeighted(ov, alpha, frame, 1 - alpha, 0, frame)
 
-        cv2.putText(frame, f"{self.title} (H: ukryj)", (start_x + 10, start_y + 20), 
+        h_txt = '{} (H: ukryj)'.format(self.title)
+        cv2.putText(frame, h_txt, (start_x + 10, start_y + 20), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-        btn_w, btn_h = 60, 20
-        btn_x = start_x + self.width - btn_w - 5
-        btn_y = start_y + 5
-        self.btn_clear_rect = (btn_x, btn_y, btn_w, btn_h)
+        b_w, b_h = 60, 20
+        b_x = start_x + self.width - b_w - 5
+        b_y = start_y + 5
+        self.btn_clear_rect = (b_x, b_y, b_w, b_h)
         
-        is_hover = (btn_x <= self.mouse_x <= btn_x + btn_w) and (btn_y <= self.mouse_y <= btn_y + btn_h)
-        btn_color = (0, 0, 200) if is_hover else (0, 0, 100)
+        hov = (b_x <= self.mouse_x <= b_x + b_w) and (b_y <= self.mouse_y <= b_y + b_h)
+        b_c = (0, 0, 200) if hov else (0, 0, 100)
         
-        cv2.rectangle(frame, (btn_x, btn_y), (btn_x + btn_w, btn_y + btn_h), btn_color, -1)
-        cv2.putText(frame, "CLEAR", (btn_x + 10, btn_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        cv2.rectangle(frame, (b_x, b_y), (b_x + b_w, b_y + b_h), b_c, -1)
+        cv2.putText(frame, 'CLEAR', (b_x + 10, b_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
 
-        line_h = 25
-        max_visible_lines = (self.height - header_h) // line_h - 1
-        total_lines = len(self.buffer)
+        l_h = 25
+        max_v = (self.height - h_h) // l_h - 1
+        total = len(self.buffer)
         
-        if total_lines == 0: 
+        if total == 0: 
             return
 
-        end_idx = total_lines - self.scroll_offset
-        start_idx = max(0, end_idx - max_visible_lines)
-        visible_lines = self.buffer[start_idx:end_idx]
+        end_i = total - self.scroll_offset
+        st_i = max(0, end_i - max_v)
+        v_lines = self.buffer[st_i:end_i]
 
-        for i, line in enumerate(visible_lines):
-            y_pos = start_y + header_h + 5 + (i * line_h)
+        for i, line in enumerate(v_lines):
+            y_p = start_y + h_h + 5 + (i * l_h)
             
-            color = (200, 200, 200)
-            if "[+]" in line or "Saved" in line or "SUCCESS" in line: color = (0, 255, 0)
-            if "[-]" in line or "ERROR" in line or "Exception" in line: color = (0, 0, 255)
-            if "[EDIT]" in line or "MODE" in line or "INFO" in line: color = (0, 255, 255)
-            if "RESET" in line: color = (255, 0, 255)
+            c = (200, 200, 200)
+            if any(x in line for x in ['[+]', 'Saved', 'SUCCESS']): c = (0, 255, 0)
+            if any(x in line for x in ['[-]', 'ERROR', 'Exception']): c = (0, 0, 255)
+            if any(x in line for x in ['[EDIT]', 'MODE', 'INFO']): c = (0, 255, 255)
+            if 'RESET' in line: c = (255, 0, 255)
             
-            max_chars = 60
-            disp_text = line if len(line) < max_chars else line[:max_chars] + "..."
-            
-            frame = draw_text_pl(frame, disp_text, (start_x + 10, y_pos), 0.5, color)
+            disp = line if len(line) < 60 else line[:60] + '...'
+            frame = draw_text_pl(frame, disp, (start_x + 10, y_p), 0.5, c)
         
         if self.scroll_offset > 0:
-            cv2.putText(frame, f"^^^ HISTORIA (+{self.scroll_offset})", (start_x + self.width - 150, start_y + header_h + 15), 
+            h_t = '^^^ HISTORIA (+{})'.format(self.scroll_offset)
+            cv2.putText(frame, h_t, (start_x + self.width - 150, start_y + h_h + 15), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)

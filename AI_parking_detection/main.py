@@ -73,6 +73,10 @@ def make_relative(path_str):
         str: Ścieżka relatywna lub oryginalny ciąg znaków w przypadku błędu.
     """
     if not path_str: return ""
+    
+    if "://" in str(path_str) or str(path_str).startswith("http"):
+        return str(path_str)
+    
     try:
         path_obj = Path(path_str).resolve()
         return str(path_obj.relative_to(BASE_DIR))
