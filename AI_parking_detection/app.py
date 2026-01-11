@@ -70,6 +70,8 @@ class ParkingMonitor:
     def setup_trackbars(self, win_name="TUNING"):
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(win_name, 400, 350)
+        self.force_focus(win_name)
+        cv2.createTrackbar("Threshold (Pix)", win_name, self.current_threshold, 2000, self.nothing)
         
         # 1. Próg detekcji (Używamy self.current_threshold)
         cv2.createTrackbar("Threshold (Pix)", win_name, self.current_threshold, 2000, self.nothing)
@@ -285,9 +287,11 @@ class ParkingMonitor:
                     tuning_active = not tuning_active
                     if tuning_active:
                         self.setup_trackbars(tuning_win)
-                        print("[INFO] Tuning wlaczony. Wciśnij 'W' aby zapisac.")
+                        print("[INFO] Tuning wlaczony. Wcisnij 'W' aby zapisac.")
                     else:
-                        try: cv2.destroyWindow(tuning_win)
+                        try: 
+                            cv2.destroyWindow(tuning_win)
+                            self.force_focus(window_name)
                         except: pass
                         print("[INFO] Tuning ukryty")
                 
@@ -347,6 +351,17 @@ class ParkingMonitor:
         
         sys.stdout = sys.__stdout__
         cv2.destroyAllWindows()
+        
+    def force_focus(self, win_name):
+        """Wymusza skupienie uwagi systemu na konkretnym oknie."""
+    try:
+        # Ustawienie okna na wierzch (wymusza focus w większości OS)
+        cv2.setWindowProperty(win_name, cv2.WND_PROP_TOPMOST, 1)
+        # Od razu wyłączamy "zawsze na wierzchu", żeby nie blokowało innych okien
+        cv2.setWindowProperty(win_name, cv2.WND_PROP_TOPMOST, 0)
+    except:
+        pass
+    
 
 def main():
     parser = argparse.ArgumentParser()
