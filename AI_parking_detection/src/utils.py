@@ -13,6 +13,7 @@ import numpy as np
 import time
 import math
 import re
+import textwrap
 from PIL import Image, ImageDraw, ImageFont
 
 # Import biblioteki yt_dlp z obsługą błędu braku instalacji
@@ -31,48 +32,36 @@ if sys.platform.startswith('win'):
 IMG_DIR = os.path.join('data', 'source', 'img')
 
 def draw_text_pl(img, text, pos, font_scale, color, thickness=1):
-    """
-    Renderuje tekst na obrazie z pełną obsługą polskich znaków diakrytycznych.
-    """
+    """Renderuje tekst z ujednoliconym pozycjonowaniem dla CV2 i PIL."""
     x, y = int(pos[0]), int(pos[1])
-    
     if isinstance(color, int): 
-        bgr_color = (color, color, color)
-        rgb_color = (color, color, color)
+        bgr_color = (color, color, color); rgb_color = (color, color, color)
     else: 
-        bgr_color = color
-        rgb_color = (color[2], color[1], color[0])
+        bgr_color = color; rgb_color = (color[2], color[1], color[0])
 
     pl_chars = 'ąęćłńóśźżĄĘĆŁŃÓŚŹŻ'
     has_pl = any(char in text for char in pl_chars)
+    cv2_y_offset = int(font_scale * 25)
 
     if not has_pl:
-        cv2.putText(img, text, (x, y + int(font_scale * 25)), 
-                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, bgr_color, thickness)
+        cv2.putText(img, text, (x, y + cv2_y_offset), cv2.FONT_HERSHEY_SIMPLEX, font_scale, bgr_color, thickness)
         return img
-
     try:
         img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
         f_size = int(font_scale * 30)
-        
         font = None
         if sys.platform.startswith('win'):
             f_path = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', 'arial.ttf')
             if os.path.exists(f_path):
-                try: 
-                    font = ImageFont.truetype(f_path, f_size)
-                except: 
-                    pass
-        
-        if font is None:
-            font = ImageFont.load_default()
-        
-        draw.text((x, y), text, font=font, fill=rgb_color)
+                try: font = ImageFont.truetype(f_path, f_size)
+                except: pass
+        if font is None: font = ImageFont.load_default()
+        # Korekta pionowa dla PIL
+        draw.text((x, y + (cv2_y_offset // 5)), text, font=font, fill=rgb_color)
         return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-        
-    except Exception:
-        cv2.putText(img, text, (x, y + 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, bgr_color, thickness)
+    except:
+        cv2.putText(img, text, (x, y + cv2_y_offset), cv2.FONT_HERSHEY_SIMPLEX, font_scale, bgr_color, thickness)
         return img
 
 def list_files_three_columns(folder, pattern='*.png', cols=3):
@@ -154,149 +143,147 @@ def get_direct_youtube_url(youtube_url):
         return youtube_url
 
 class OverlayConsole:
-    """
-    Graficzna konsola renderowana jako nakładka na obraz wideo.
-    """
-
-    def __init__(self, title='LOG SYSTEMOWY', max_lines=50, visible_by_default=False):
+    def __init__(self, title='LOG SYSTEMOWY', max_lines=200, visible_by_default=False, log_file="session.log"):
         self.buffer = []
         self.title = title
         self.visible = visible_by_default
         self.max_lines = max_lines
+        self.log_file = log_file
         self.scroll_offset = 0 
         self.height = 350
-        self.width = 500
+        self.width = 400
         self.bg_color = (0, 0, 0)
         self.mouse_x = 0
         self.mouse_y = 0
         self.btn_clear_rect = None 
         self.current_rect = None 
         self.cwd = os.getcwd().replace('\\', '/')
-
-    def _shorten_path(self, text):
-        """Bezpiecznie skraca ścieżki, ignorując URL-e."""
-        if not text: 
-            return ''
+        self.line_limit = 50
         
-        # Jeśli string zawiera ślady URL, nie dotykaj go w ogóle
-        if '://' in text or 'http:/' in text or 'https:/' in text:
-            return text
-
-        try:
-            t_fixed = text.replace('\\', '/')
-            cwd_l = self.cwd.lower()
-            t_l = t_fixed.lower()
-            if cwd_l in t_l:
-                idx = t_l.find(cwd_l)
-                suffix = t_fixed[idx + len(cwd_l):]
-                if suffix.startswith('/'): 
-                    suffix = suffix[1:]
-                return './{}'.format(suffix)
-            return t_fixed
-        except: 
-            return text
+        if log_file:
+            try:
+                with open(log_file, 'w', encoding='utf-8') as f:
+                    f.write("--- START SESJI ---\n")
+            except: pass
 
     def write(self, message):
-        """Zapisuje wiadomość do bufora konsoli."""
-        if message and message.strip():
-            msg = self._shorten_path(message.strip())
-            t_stamp = time.strftime('%H:%M:%S')
-            self.buffer.append('[{}] {}'.format(t_stamp, msg))
+        """Dzieli tekst (Word Wrap) i przypisuje typ koloru."""
+        try:
+            sys.__stdout__.write(message)
+            sys.__stdout__.flush()
+        except: pass
+
+        if not message or message.isspace(): return
+        
+        if self.log_file:
+            try:
+                with open(self.log_file, 'a', encoding='utf-8') as f:
+                    f.write(message)
+            except: pass
+
+        lines = message.splitlines()
+        for line in lines:
+            clean = line.strip()
+            if not clean: continue
+
+            # 1. Rozpoznawanie typu wiadomości
+            m_type = 'normal' # Domyślnie szary
+            if '[+]' in clean or 'SUCCESS' in clean: m_type = 'success'
+            elif '[-]' in clean or 'ERROR' in clean: m_type = 'error'
+            elif 'INFO' in clean: m_type = 'info'
+            elif 'MODE' in clean: m_type = 'mode'
+            elif 'EDIT' in clean: m_type = 'edit'
+            elif 'RESET' in clean: m_type = 'reset'
+
+            # 2. Inteligentne zawijanie (Word Wrap)
+            wrap_width = self.line_limit - 12
+            chunks = textwrap.wrap(clean, width=wrap_width, break_long_words=False)
+            
+            t = time.strftime('%H:%M:%S')
+            for i, chunk in enumerate(chunks):
+                prefix = f'[{t}] ' if i == 0 else ' ' * 11
+                self.buffer.append((f'{prefix}{chunk}', m_type))
+                
+                if len(self.buffer) > self.max_lines:
+                    self.buffer.pop(0)
+            
             self.scroll_offset = 0
-            while len(self.buffer) > self.max_lines:
-                self.buffer.pop(0)
-
-    def toggle(self):
-        self.visible = not self.visible
-
+            
+    def flush(self): pass
+    def toggle(self): self.visible = not self.visible
     def clear(self):
         self.buffer = []
         self.scroll_offset = 0
 
     def handle_mouse(self, event, x, y, flags, param=None):
-        if not self.visible: 
-            return False
+        if not self.visible: return False
         self.mouse_x, self.mouse_y = x, y
         
-        is_h = False
         if self.current_rect:
             cx, cy, cw, ch = self.current_rect
             if cx <= x <= cx + cw and cy <= y <= cy + ch: 
-                is_h = True
-
-        if is_h:
-            if event == cv2.EVENT_MOUSEWHEEL:
-                if flags > 0: 
-                    self.scroll_offset = min(self.scroll_offset + 1, max(0, len(self.buffer) - 5))
-                else: 
-                    self.scroll_offset = max(self.scroll_offset - 1, 0)
-                return True 
-            elif event == cv2.EVENT_LBUTTONDOWN:
-                if self.btn_clear_rect:
+                l_h = 22
+                max_v = (self.height - 40) // l_h
+                total = len(self.buffer)
+                
+                if event == cv2.EVENT_MOUSEWHEEL:
+                    # Jeśli mamy mniej linii niż mieści okno, nie scrollujemy wcale
+                    if total <= max_v:
+                        self.scroll_offset = 0
+                        return True
+                    
+                    if flags > 0: # W górę (historia)
+                        self.scroll_offset = min(self.scroll_offset + 2, total - max_v)
+                    else: # W dół (do nowych)
+                        self.scroll_offset = max(0, self.scroll_offset - 2)
+                    return True 
+                
+                elif event == cv2.EVENT_LBUTTONDOWN and self.btn_clear_rect:
                     bx, by, bw, bh = self.btn_clear_rect
                     if bx <= x <= bx+bw and by <= y <= by+bh:
-                        self.clear()
-                        return True
-                return True
+                        self.clear(); return True
         return False
 
     def draw(self, frame):
+        """Rysuje konsolę na klatce wideo."""
         if not self.visible: 
             self.current_rect = None
-            return
+            return frame 
         
         h_f, w_f, _ = frame.shape
-        start_x = max(0, w_f - self.width - 10)
-        start_y = 60 
+        start_x, start_y = max(0, w_f - self.width - 10), 60 
         self.current_rect = (start_x, start_y, self.width, self.height)
         
         ov = frame.copy()
         cv2.rectangle(ov, (start_x, start_y), (start_x + self.width, start_y + self.height), self.bg_color, -1)
-        h_h = 30
-        cv2.rectangle(ov, (start_x, start_y), (start_x + self.width, start_y + h_h), (50, 50, 50), -1)
-        
-        alpha = 0.85
-        cv2.addWeighted(ov, alpha, frame, 1 - alpha, 0, frame)
+        cv2.rectangle(ov, (start_x, start_y), (start_x + self.width, start_y + 30), (40, 40, 40), -1)
+        frame = cv2.addWeighted(ov, 0.8, frame, 0.2, 0)
+        cv2.putText(frame, self.title, (start_x + 10, start_y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-        h_txt = '{} (H: ukryj)'.format(self.title)
-        cv2.putText(frame, h_txt, (start_x + 10, start_y + 20), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-        b_w, b_h = 60, 20
-        b_x = start_x + self.width - b_w - 5
-        b_y = start_y + 5
-        self.btn_clear_rect = (b_x, b_y, b_w, b_h)
-        
-        hov = (b_x <= self.mouse_x <= b_x + b_w) and (b_y <= self.mouse_y <= b_y + b_h)
-        b_c = (0, 0, 200) if hov else (0, 0, 100)
-        
-        cv2.rectangle(frame, (b_x, b_y), (b_x + b_w, b_y + b_h), b_c, -1)
-        cv2.putText(frame, 'CLEAR', (b_x + 10, b_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-
-        l_h = 25
-        max_v = (self.height - h_h) // l_h - 1
+        l_h = 22
+        max_v = (self.height - 40) // l_h
         total = len(self.buffer)
-        
-        if total == 0: 
-            return
 
-        end_i = total - self.scroll_offset
-        st_i = max(0, end_i - max_v)
-        v_lines = self.buffer[st_i:end_i]
+        if total > 0:
+            end_i = total - self.scroll_offset
+            st_i = max(0, end_i - max_v)
+            visible_lines = self.buffer[st_i:end_i]
 
-        for i, line in enumerate(v_lines):
-            y_p = start_y + h_h + 5 + (i * l_h)
-            
-            c = (200, 200, 200)
-            if any(x in line for x in ['[+]', 'Saved', 'SUCCESS']): c = (0, 255, 0)
-            if any(x in line for x in ['[-]', 'ERROR', 'Exception']): c = (0, 0, 255)
-            if any(x in line for x in ['[EDIT]', 'MODE', 'INFO']): c = (0, 255, 255)
-            if 'RESET' in line: c = (255, 0, 255)
-            
-            disp = line if len(line) < 60 else line[:60] + '...'
-            frame = draw_text_pl(frame, disp, (start_x + 10, y_p), 0.5, c)
-        
-        if self.scroll_offset > 0:
-            h_t = '^^^ HISTORIA (+{})'.format(self.scroll_offset)
-            cv2.putText(frame, h_t, (start_x + self.width - 150, start_y + h_h + 15), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+            for i, (line_text, m_type) in enumerate(visible_lines):
+                y_p = start_y + 50 + (i * l_h)
+                
+                # PALETA KOLORÓW (BGR)
+                colors = {
+                    'success': (0, 255, 0),      # ZIELONY [+]
+                    'error':   (0, 0, 255),      # CZERWONY [-]
+                    'info':    (255, 0, 0),      # NIEBIESKI (INFO)
+                    'mode':    (0, 255, 255),    # ŻÓŁTY (MODE)
+                    'edit':    (255, 255, 0),    # CYJAN (EDIT)
+                    'reset':   (128, 128, 255),  # RÓŻOWY (RESET)
+                    'normal':  (200, 200, 200)   # SZARY (zwykły tekst)
+                }
+                c = colors.get(m_type, (200, 200, 200))
+                
+                frame = draw_text_pl(frame, line_text, (start_x + 10, y_p - 15), 0.4, c)
+
+        return frame

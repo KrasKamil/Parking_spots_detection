@@ -80,24 +80,6 @@
             "positions_file": "data/parking_lots/rynek_positions",
             "source_image": "data\\source\\img\\rynek.png",
             "video_source": "https://cdn01.aztv.pl/sesja_jaslo/sesja_jaslo.stream/playlist.m3u8?conn_id=0512061015"
-        },
-        "RR1": {
-            "name": "RR1",
-            "rect_width": 124,
-            "rect_height": 184,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/RR1_positions",
-            "source_image": "data\\source\\img\\RR1.png",
-            "video_source": "https://cdn01.aztv.pl/sesja_jaslo/sesja_jaslo.stream/playlist.m3u8?conn_id=0512061015"
-        },
-        "test": {
-            "name": "test",
-            "rect_width": 100,
-            "rect_height": 129,
-            "threshold": 900,
-            "positions_file": "data/parking_lots/test_positions",
-            "source_image": "data/source/img/TEST.png",
-            "video_source": "https:/www.youtube.com/watch?v=_1PfF1v9GJc"
         }
     },
     "processing_params": {

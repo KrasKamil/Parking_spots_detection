@@ -63,16 +63,6 @@ show_help_panel = False
 positions_file = "" 
 last_h_press_time = 0 
 
-# --- FUNKCJA LOGOWANIA (GWARANTOWANA) ---
-def log(msg):
-    """Loguje do terminala oraz do konsoli ekranowej."""
-    # 1. Terminal systemowy
-    try: sys.__stdout__.write(f"{msg}\n")
-    except: pass
-    
-    # 2. Konsola na ekranie (Overlay) - BEZPOŚREDNIO
-    if console_ui:
-        console_ui.write(str(msg))
 
 def get_next_id():
     existing = {int(p['id']) for p in car_park_positions if str(p['id']).isdigit()}
@@ -87,9 +77,12 @@ def create_rotated_rect(center, w, h, angle):
     return [(int(cx + px*cos_a - py*sin_a), int(cy + px*sin_a + py*cos_a)) for px, py in corners]
 
 def save_data(filepath):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True) 
+
     data = {'car_park_positions': car_park_positions, 'route_points': route_points}
-    with open(filepath, 'wb') as f: pickle.dump(data, f)
-    log(f"[SUCCESS] Zapisano {len(car_park_positions)} miejsc.")
+    with open(filepath, 'wb') as f: 
+        pickle.dump(data, f)
+    print(f"[SUCCESS] Saved {len(car_park_positions)} spots.")
 
 def mouse_events(event, x, y, flags, params):
     global temp_points, is_editing_id, edit_target_index, input_buffer, mouse_curr_x, mouse_curr_y, current_angle
@@ -128,7 +121,7 @@ def mouse_events(event, x, y, flags, params):
                     if btn_x <= x <= btn_x+btn_w and btn_y <= y <= btn_y+btn_h: should_exit = True; return
 
         if is_editing_id: 
-            log("(!) Zakończ edycję ENTEREM.")
+            print("(!) End edit with ENTER.")
             return
 
         if mode == 'p':
@@ -136,22 +129,22 @@ def mouse_events(event, x, y, flags, params):
             pts = create_rotated_rect((real_x, real_y), rect_w, rect_h, current_angle)
             car_park_positions.append({'id': new_id, 'points': pts, 'irregular': False})
             last_action_time = time.time()
-            log(f"[+] Dodano miejsce (ID: {new_id})")
+            print(f"[+] Added Spot (ID: {new_id})")
             
         elif mode == 'i':
             temp_points.append((real_x, real_y))
             last_action_time = time.time()
-            log(f"[INFO] Punkt {len(temp_points)}/4")
+            print(f"[INFO] Punkt {len(temp_points)}/4")
             if len(temp_points) == 4:
                 new_id = get_next_id()
                 car_park_positions.append({'id': new_id, 'points': temp_points.copy(), 'irregular': True})
                 temp_points = []
-                log(f"[+] Utworzono wielokąt (ID: {new_id})")
+                print(f"[+] Created irregular spot (ID: {new_id})")
                 
         elif mode == 't':
             route_points.append((real_x, real_y))
             last_action_time = time.time()
-            log(f"[+] Dodano punkt trasy ({len(route_points)})")
+            print(f"[+] Added route point ({len(route_points)})")
             
         elif mode == 'e':
             found = False
@@ -160,38 +153,43 @@ def mouse_events(event, x, y, flags, params):
                     edit_target_index = i
                     input_buffer = str(pos['id'])
                     is_editing_id = True
-                    log(f"[EDIT] Edycja ID: {input_buffer}")
+                    print(f"[EDIT] Edycja ID: {input_buffer}")
                     found = True
                     break
-            if not found: log("[-] Brak miejsca w tym punkcie.")
+            if not found: print("[-] Brak miejsca w tym punkcie.")
                     
         elif mode == 'c':
             if len(temp_points) >= 2: temp_points = []
             temp_points.append((real_x, real_y))
-            log(f"[CALIB] Punkt {len(temp_points)}/2")
+            print(f"[CALIB] Punkt {len(temp_points)}/2")
 
     elif event == cv2.EVENT_RBUTTONDOWN:
         last_action_time = time.time()
         if mode == 't' and route_points: 
-            route_points.pop(); log("[-] Cofnięto punkt trasy")
+            route_points.pop(); print("[-] Undo trace point")
         elif mode in ['p','i']:
             deleted = False
             for i, p in enumerate(car_park_positions):
                 if cv2.pointPolygonTest(np.array(p['points'],np.int32), (real_x,real_y), False) >= 0:
                     removed_id = p['id']
                     car_park_positions.pop(i)
-                    log(f"[-] Usunięto miejsce ID: {removed_id}")
+                    print(f"[-] Removed Spot ID: {removed_id}")
                     deleted = True
                     break
             if not deleted and mode == 'i' and temp_points:
-                temp_points.pop(); log("[-] Cofnięto punkt")
+                temp_points.pop(); print("[-] Undo polygon point")
         elif temp_points: 
-            temp_points = []; log("[-] Wyczyszczono punkty")
+            temp_points = []; print("[-] Cleared polygon points")
 
 def main():
+    if sys.platform.startswith('win'):
+        try:
+            import io
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        except: pass
     global mode, car_park_positions, route_points, console_ui, scale_factor, rect_w, rect_h, positions_file
     global is_editing_id, input_buffer, edit_target_index, blink_state, should_exit, last_action_time, ui_force_hidden, temp_points, show_help_panel, last_h_press_time
-
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--image"); parser.add_argument("--lot", required=True); parser.add_argument("--mode", default="p")
     args = parser.parse_args()
@@ -232,7 +230,7 @@ def main():
                  if files: img_path = files[0]
 
     if not img_path or not os.path.exists(img_path):
-        print(f"ERROR: Brak obrazu dla parkingu '{current_lot_name}'"); return
+        sys.exit(1)
 
     img_orig = cv2.imread(img_path)
     if img_orig is None: print(f"ERROR: Nie można otworzyć pliku: {img_path}"); return
@@ -247,10 +245,17 @@ def main():
     title = "KALIBRACJA" if mode=='c' else f"EDYTOR: {current_lot_name}"
     
     # KONSOLA DOMYŚLNIE UKRYTA (False)
-    console_ui = OverlayConsole(title=title, visible_by_default=False)
+    console_ui = OverlayConsole(title=title, visible_by_default=False, log_file="generator.log")
+    
+    # PRZEKIEROWANIE: Teraz każdy print() trafi do OverlayConsole
+    sys.stdout = console_ui
+    
+    # Teraz każdy print() trafi do okna H
+    print(f"Uruchomiono edytor dla: {current_lot_name}")
+ 
+    
     if mode == 'c': console_ui.visible = False
     
-    # UWAGA: Usunąłem sys.stdout = console_ui, bo mamy funkcję log()!
 
     win = "Edytor"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
@@ -258,8 +263,8 @@ def main():
     cv2.moveWindow(win, 50, 50)
     cv2.setMouseCallback(win, mouse_events, {'disp_w': dw, 'disp_h': dh})
 
-    if mode == 'c': log("Zaznacz przekątną miejsca (2 punkty).")
-    else: log("Witaj w edytorze! Wciśnij przycisk INFO (lewy górny róg) dla pomocy.")
+    if mode == 'c': print("Zaznacz przekatna miejsca (2 punkty).")
+    else: print("[INFO] Witaj w edytorze! Wcisnij przycisk INFO (lewy gorny rog) dla pomocy.")
 
     frame_cnt = 0
 
@@ -333,7 +338,7 @@ def main():
             frame = draw_text_pl(frame, "SKRÓTY KLAWISZOWE", (panel_x + 30, panel_y + 15), 0.5, (0, 255, 255))
             cv2.line(frame, (panel_x+10, panel_y+35), (panel_x+panel_w-10, panel_y+35), (100,100,100), 1)
             help_list = [("TRYBY:", ""), (" [P]", "Dodaj Prostokąt"), (" [I]", "Dodaj Wielokąt (4 pkt)"), (" [T]", "Rysuj Trasę"), (" [E]", "Edytuj ID miejsca"),
-                         ("AKCJE:", ""), (" [R]", "Resetuj wszystko"), (" [S]", "Zapisz zmiany"), (" [H]", "Pokaż/Ukryj Logi"), (" [Q]", "Wyjdź"), (" [U]", "Ukryj interfejs")]
+                         ("AKCJE:", ""), (" [R]", "Resetuj wszystko"), (" [S]", "Zapisz zmiany"), (" [H]", "Pokaż/Ukryj print"), (" [Q]", "Wyjdź"), (" [U]", "Ukryj interfejs")]
             curr_y = panel_y + 55
             for k_txt, desc in help_list:
                 if desc == "": frame = draw_text_pl(frame, k_txt, (panel_x+10, curr_y), 0.45, (150,150,150)); curr_y += 25
@@ -378,7 +383,7 @@ def main():
 
         # RYSOWANIE KONSOLI
         if mode != 'c' and not ui_force_hidden:
-            console_ui.draw(frame)
+            frame = console_ui.draw(frame)
 
         cv2.imshow(win, frame)
         k = cv2.waitKey(10) & 0xFF
@@ -388,7 +393,7 @@ def main():
                 for p in car_park_positions: 
                     if str(p['id'])==input_buffer: p['id'] = car_park_positions[edit_target_index]['id']
                 car_park_positions[edit_target_index]['id'] = input_buffer
-                log(f"[EDIT] Zmieniono ID na: {input_buffer}")
+                print(f"[EDIT] Zmieniono ID na: {input_buffer}")
                 is_editing_id=False
             elif k==8: input_buffer = input_buffer[:-1]
             elif 48<=k<=122: input_buffer += chr(k).upper()
@@ -411,11 +416,11 @@ def main():
                      last_h_press_time = time.time()
             
             elif k==ord('s'): save_data(positions_file)
-            elif k==ord('p'): mode='p'; show_help_panel = False; log("[MODE] Przełączono na: PROSTOKĄT")
-            elif k==ord('i'): mode='i'; show_help_panel = False; temp_points=[]; log("[MODE] Przełączono na: WIELOKĄT")
-            elif k==ord('t'): mode='t'; show_help_panel = False; log("[MODE] Przełączono na: TRASA")
-            elif k==ord('e'): mode='e'; show_help_panel = False; log("[MODE] Przełączono na: EDYCJA ID")
-            elif k==ord('r'): car_park_positions=[]; route_points=[]; log("[RESET] Usunięto wszystkie punkty")
+            elif k==ord('p'): mode='p'; show_help_panel = False; print("[MODE] Przełaczono na: Prostokat")
+            elif k==ord('i'): mode='i'; show_help_panel = False; temp_points=[]; print("[MODE] Przełaczono na: WIELOKAT")
+            elif k==ord('t'): mode='t'; show_help_panel = False; print("[MODE] Przełaczono na: TRASA")
+            elif k==ord('e'): mode='e'; show_help_panel = False; print("[MODE] Przełaczono na: EDYCJA ID")
+            elif k==ord('r'): car_park_positions=[]; route_points=[]; print("[RESET] Usunieto wszystkie punkty")
 
     try: sys.stdout = sys.__stdout__
     except: pass

@@ -550,14 +550,42 @@ def main():
                 subprocess.run([sys.executable, "app.py", "--lot", data], cwd=cwd_path, check=True)
 
             elif action == "edit":
-                # Uruchomienie edytora punktów dla istniejącego parkingu
-                subprocess.run([sys.executable, "car_park_coordinate_generator.py", "--lot", data], 
-                               cwd=cwd_path, check=True)
-                root = tk.Tk(); root.withdraw(); root.attributes("-topmost", True)
-                if messagebox.askyesno("Uruchomienie", f"Zapisano zmiany. Czy uruchomić monitoring dla '{data}'?", parent=root):
-                    root.destroy(); subprocess.run([sys.executable, "app.py", "--lot", data], cwd=cwd_path, check=True)
-                else: root.destroy()
+                # 1. Pobierz ścieżki z konfiguracji
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                
+                lot_info = config_data["parking_lots"].get(data, {})
+                img_path = BASE_DIR / lot_info.get("source_image", "")
+                pos_path = BASE_DIR / lot_info.get("positions_file", "")
 
+                # 2. Sprawdź czy obraz bazowy w ogóle istnieje
+                if not img_path.exists():
+                    show_topmost_message("Błąd Krytyczny", 
+                        f"Nie znaleziono pliku graficznego: {img_path.name}\n"
+                        "Nie można edytować miejsc bez obrazu tła.", is_error=True)
+                    continue
+
+                # 3. Jeśli plik pozycji nie istnieje, uprzedź użytkownika
+                if not pos_path.exists():
+                    root = tk.Tk(); root.withdraw(); root.attributes("-topmost", True)
+                    messagebox.showinfo("Nowa Geometria", 
+                        f"Konfiguracja miejsc dla '{data}' nie istnieje.\n"
+                        "Zostanie teraz otwarty edytor, abyś mógł narysować je od zera.", parent=root)
+                    root.destroy()
+
+                # 4. Uruchom edytor
+                result = subprocess.run([sys.executable, "car_park_coordinate_generator.py", "--lot", data], 
+                               cwd=cwd_path)
+                
+                # 5. Sprawdź efekt końcowy
+                if result.returncode == 0 and pos_path.exists():
+                    root = tk.Tk(); root.withdraw(); root.attributes("-topmost", True)
+                    if messagebox.askyesno("Gotowe", f"Zapisano geometrię dla '{data}'. Uruchomić monitoring?", parent=root):
+                        root.destroy(); subprocess.run([sys.executable, "app.py", "--lot", data], cwd=cwd_path, check=True)
+                    else: root.destroy()
+                elif result.returncode != 0:
+                    show_topmost_message("Błąd", "Wystąpił problem techniczny podczas uruchamiania edytora.", is_error=True)
+            
             elif action == "create":
                 # Sekwencja kreatora nowego parkingu
                 image_path = data

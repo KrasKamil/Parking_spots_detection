@@ -115,7 +115,7 @@ class ParkingMonitor:
             cv2.setTrackbarPos("Block Size", win_name, def_block)
             cv2.setTrackbarPos("Constant C", win_name, def_c)
             cv2.setTrackbarPos("Blur Kernel", win_name, def_blur)
-            print("[INFO] Zresetowano parametry do domyślnych.")
+            print("[INFO] Zresetowano parametry do domyslnych.")
         except: pass
 
     def save_current_config(self, threshold, block, c, blur):
@@ -203,7 +203,7 @@ class ParkingMonitor:
             writer = cv2.VideoWriter(output_path, fourcc, 25.0, (disp_w, disp_h))
         
         print("System ON.")
-        print("SKRÓTY: 'H'-Logi | 'Ctrl+T'-Tuning | 'Q'-Wyjście")
+        print("[INFO]: 'H'-Logi | 'Ctrl+T'-Tuning | 'Q'-Wyjście")
         
         start_time = time.time()
         end_time = start_time + (duration_minutes * 60) if duration_minutes > 0.0 else float('inf')
@@ -262,7 +262,7 @@ class ParkingMonitor:
                 cv2.rectangle(display_frame, (btn_x, btn_y), (btn_x+btn_w, btn_y+btn_h), (200,200,200), 1)
                 cv2.putText(display_frame, "WYJSCIE", (btn_x+15, btn_y+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
-                console.draw(display_frame) 
+                display_frame = console.draw(display_frame) 
 
                 cv2.imshow(window_name, display_frame)
                 
@@ -285,7 +285,7 @@ class ParkingMonitor:
                     tuning_active = not tuning_active
                     if tuning_active:
                         self.setup_trackbars(tuning_win)
-                        print("[INFO] Tuning włączony. Wciśnij 'W' aby zapisać.")
+                        print("[INFO] Tuning wlaczony. Wciśnij 'W' aby zapisac.")
                     else:
                         try: cv2.destroyWindow(tuning_win)
                         except: pass
@@ -339,7 +339,7 @@ class ParkingMonitor:
 
         while True:
             frame_copy = display.copy()
-            console.draw(frame_copy)
+            frame_copy = console.draw(frame_copy)
             cv2.imshow(win_name, frame_copy)
             k = cv2.waitKey(20) & 0xFF
             if k == ord('q'): break

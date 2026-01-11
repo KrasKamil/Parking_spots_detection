@@ -9,3 +9,4 @@ data/parking_lots/opener.py
 data/parking_lots/output.txt
 !video_tests/*.mp4
 /venv/
+*.log
