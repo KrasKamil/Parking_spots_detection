@@ -71,8 +71,6 @@ class ParkingMonitor:
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(win_name, 400, 350)
         self.force_focus(win_name)
-        cv2.createTrackbar("Threshold (Pix)", win_name, self.current_threshold, 2000, self.nothing)
-        
         # 1. Próg detekcji (Używamy self.current_threshold)
         cv2.createTrackbar("Threshold (Pix)", win_name, self.current_threshold, 2000, self.nothing)
         
